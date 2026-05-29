@@ -1,0 +1,30 @@
+#!/bin/bash
+# MCP Memory Service — Persistent Semantic Memory Server (Stanley appliance)
+# Rendered by stanley-install from templates/memory-server.sh.tmpl
+# Mirrors Jason's proven, key-gated brain. Runs HTTP mode on port {{PORT}},
+# exposed via Cloudflare Tunnel at https://{{BRAIN_HOSTNAME}}/mcp
+
+# Activate the install's own virtual environment
+source {{INSTALL_DIR}}/memory-venv/bin/activate
+
+# --- Ports (HTTP + SSE on the same port, matching Jason's setup) ---
+export MCP_HTTP_PORT={{PORT}}
+export MCP_SSE_PORT={{PORT}}
+export MCP_HTTP_HOST=127.0.0.1
+
+# --- Storage: self-contained under the install dir ---
+# NOTE: explicitly set so the service NEVER falls back to the macOS default
+# (~/Library/Application Support/mcp-memory) — keeps every install isolated.
+export MCP_MEMORY_STORAGE_BACKEND=sqlite_vec
+export MCP_MEMORY_BASE_DIR={{INSTALL_DIR}}/data
+export MCP_MEMORY_SQLITE_PATH={{INSTALL_DIR}}/data/sqlite_vec.db
+export MCP_MEMORY_BACKUPS_PATH={{INSTALL_DIR}}/data/backups
+
+# --- Auth: API key ONLY (no anonymous, no OAuth — OAuth has a no-refresh bug) ---
+export MCP_CORS_ORIGINS="https://claude.ai,https://*.claude.ai,*"
+export MCP_OAUTH_ENABLED=false
+export MCP_ALLOW_ANONYMOUS_ACCESS=false
+export MCP_API_KEY="$(cat {{INSTALL_DIR}}/memory-server-api-key.txt)"
+
+# Start the memory server (blocks; launchd KeepAlive restarts it)
+exec memory server --http 2>&1

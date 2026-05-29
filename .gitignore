@@ -1,0 +1,7 @@
+# never commit rendered secrets / local state
+memory-server-api-key.txt
+data/
+logs/
+*.log
+*.pid
+config-memory.yml

@@ -1,0 +1,7 @@
+#!/bin/bash
+# Cloudflare named-tunnel runner (Stanley appliance)
+# Rendered by stanley-install from templates/memory-tunnel.sh.tmpl
+# Mirrors Jason's ~/stanley-ai/memory-tunnel.sh
+exec /opt/homebrew/bin/cloudflared tunnel \
+  --config {{INSTALL_DIR}}/config-memory.yml \
+  run {{TUNNEL_NAME}}

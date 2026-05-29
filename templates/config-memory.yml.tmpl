@@ -1,0 +1,6 @@
+tunnel: {{TUNNEL_UUID}}
+credentials-file: {{TUNNEL_CREDS_FILE}}
+ingress:
+  - hostname: {{BRAIN_HOSTNAME}}
+    service: http://127.0.0.1:{{PORT}}
+  - service: http_status:404
