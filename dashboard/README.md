@@ -17,8 +17,9 @@ gates and authenticates access to it.
 
 ## What it does
 - Human auth = **email One-time PIN** via Cloudflare Access (no passwords, no Google).
-- The brain's API key lives in a **Worker secret** and is injected server-side on every request
-  (including the SSE stream). It is never sent to the browser.
+- Brain auth mode is **auto-detected**. If your brain is key-gated, its API key lives in a
+  **Worker secret**, injected server-side on every request (incl. SSE), never sent to the browser.
+  If your brain is anonymous, the proxy forwards keyless.
 - Pre-seeds `localStorage` so the brain dashboard's SPA never shows its API-key modal — without
   exposing the real key.
 - **Fail-closed:** until the Access gate is created, the Worker returns `503` and never contacts

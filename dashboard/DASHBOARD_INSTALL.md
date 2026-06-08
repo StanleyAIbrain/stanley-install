@@ -12,10 +12,10 @@ myself. Don't skip ahead."*
 
 ## What you need before starting
 
-- Your brain already installed and running (from your original install — `brain.<YOUR-DOMAIN>` works),
-  and **key-gated** with its key file at `~/stanley-ai/memory-server-api-key.txt` (the appliance
-  installer creates this). If your brain runs anonymously (no key), tell your Claude — the dashboard
-  still works, but the key-injection step is skipped.
+- Your brain already installed and running (from your original install — `brain.<YOUR-DOMAIN>` works).
+  **Works whether your brain is key-gated or anonymous — the installer detects which automatically.**
+  (If key-gated, it reads the key from `~/stanley-ai/memory-server-api-key.txt`; if anonymous, it
+  skips the key entirely.)
 - Your Cloudflare account (the same one your brain's tunnel uses).
 - Your domain on Cloudflare (the same one).
 - **Zero Trust enabled** on that Cloudflare account with **One-time PIN** turned on
@@ -28,8 +28,9 @@ myself. Don't skip ahead."*
 
 A small Cloudflare Worker sits at `dashboard.<YOUR-DOMAIN>`. Cloudflare emails you a 6-digit
 code when you visit — that's the login. Once you're in, the Worker talks to your brain *for*
-you: it holds your brain's API key server-side and attaches it to every request. You never
-see or paste the key. Nobody without access to your email inbox can get in.
+you. If your brain uses an API key, the Worker holds it server-side and attaches it to every
+request — you never see or paste it (and if your brain is anonymous, there's simply no key to
+handle). Nobody without access to your email inbox can get in.
 
 ---
 

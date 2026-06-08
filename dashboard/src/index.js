@@ -6,8 +6,9 @@
 //   1. FAIL-CLOSED. If not fully configured, or the request lacks a valid
 //      Cloudflare Access JWT, return an error and NEVER touch the brain.
 //   2. Validate the `Cf-Access-Jwt-Assertion` against the team's JWKS + AUD.
-//   3. Reverse-proxy every path (incl. SSE) to the upstream brain, injecting the
-//      real MCP_API_KEY server-side. The key is NEVER returned to the browser.
+//   3. Reverse-proxy every path (incl. SSE) to the upstream brain. When the brain
+//      is key-gated, inject MCP_API_KEY server-side (never returned to the
+//      browser). When the brain is anonymous (no key configured), proxy keyless.
 //   4. Pre-seed localStorage so the dashboard SPA doesn't demand a key from the
 //      human (GHSA-73hc-m4hx-79pj: the SPA always shows the key modal otherwise).
 //
@@ -43,8 +44,10 @@ export default {
     const { CF_ACCESS_TEAM_DOMAIN, CF_ACCESS_AUD, UPSTREAM, MCP_API_KEY, ALLOWED_EMAILS } = env;
 
     // ---- (1) FAIL-CLOSED preconditions -------------------------------------
-    // If any of these are missing the proxy must not reach the brain at all.
-    if (!UPSTREAM || !MCP_API_KEY || !CF_ACCESS_TEAM_DOMAIN || !CF_ACCESS_AUD) {
+    // The Access gate (team + AUD) and an upstream are mandatory. MCP_API_KEY is
+    // intentionally NOT required: a brain that allows anonymous access needs no
+    // injected key, so the proxy runs keyless in that mode (see step 3).
+    if (!UPSTREAM || !CF_ACCESS_TEAM_DOMAIN || !CF_ACCESS_AUD) {
       return deny(503, 'dashboard-proxy not configured (fail-closed)');
     }
 
@@ -84,7 +87,7 @@ export default {
     const isSSE =
       url.pathname.startsWith('/api/events') ||
       (request.headers.get('accept') || '').includes('text/event-stream');
-    if (isSSE) upstream.searchParams.set('api_key', MCP_API_KEY);
+    if (isSSE && MCP_API_KEY) upstream.searchParams.set('api_key', MCP_API_KEY);
 
     const headers = new Headers(request.headers);
     // Strip anything the client supplied; the Worker is the sole source of auth.
@@ -92,7 +95,9 @@ export default {
     headers.delete('Authorization');
     headers.delete('Cf-Access-Jwt-Assertion'); // no need to forward to the brain
     headers.delete('Host'); // let fetch derive Host/SNI from the upstream URL
-    headers.set('X-API-Key', MCP_API_KEY);
+    // Inject the brain key ONLY when configured. For an anonymous brain (no
+    // MCP_API_KEY secret) the proxy forwards without an auth header.
+    if (MCP_API_KEY) headers.set('X-API-Key', MCP_API_KEY);
 
     const init = {
       method: request.method,
