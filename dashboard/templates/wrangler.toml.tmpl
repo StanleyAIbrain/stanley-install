@@ -1,0 +1,31 @@
+# Rendered by install-dashboard.sh into ./wrangler.toml — do not hand-edit the
+# rendered file; re-run the installer to change values.
+#
+# Placeholders: {{WORKER_NAME}} {{BRAIN_HOSTNAME}} {{CF_ACCESS_TEAM_DOMAIN}}
+#               {{CF_ACCESS_AUD}} {{DASHBOARD_HOSTNAME}}
+
+name = "{{WORKER_NAME}}"
+main = "src/index.js"
+compatibility_date = "2026-05-01"
+
+# CRITICAL: no public *.workers.dev URL. The ONLY way in is the Access-gated
+# custom domain — a workers.dev route would let someone bypass Access and reach
+# the key-injecting proxy directly.
+workers_dev = false
+
+[vars]
+# The Worker's upstream — your brain's public hostname.
+UPSTREAM = "https://{{BRAIN_HOSTNAME}}"
+# Your Cloudflare Access team domain (e.g. yourname.cloudflareaccess.com).
+CF_ACCESS_TEAM_DOMAIN = "{{CF_ACCESS_TEAM_DOMAIN}}"
+# The Access application's Audience (AUD) tag. EMPTY = FAIL-CLOSED (Worker 503s
+# and never contacts the brain) until the gate is created and wired in.
+CF_ACCESS_AUD = "{{CF_ACCESS_AUD}}"
+# Optional defense-in-depth allowlist (comma-separated, lowercase). Empty = rely
+# on the Access policy as the single source of truth.
+ALLOWED_EMAILS = ""
+
+# Custom domain — wrangler provisions the DNS + edge cert on deploy.
+[[routes]]
+pattern = "{{DASHBOARD_HOSTNAME}}"
+custom_domain = true

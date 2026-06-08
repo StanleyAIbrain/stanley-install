@@ -1,0 +1,16 @@
+{
+  "name": "stanley-dashboard-proxy",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Access-gated, key-injecting reverse proxy that puts an email-OTP login in front of your mcp-memory-service brain dashboard.",
+  "scripts": {
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "jose": "^5.9.6"
+  },
+  "devDependencies": {
+    "wrangler": "^4.76.0"
+  }
+}
