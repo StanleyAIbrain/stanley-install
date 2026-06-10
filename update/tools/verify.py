@@ -68,6 +68,9 @@ def main():
     ap.add_argument("--server-url", default=None,
                     help="e.g. http://127.0.0.1:8765 — adds the v1.4 cognition heartbeat gate")
     ap.add_argument("--api-key-file", default=None, help="file holding the server API key")
+    ap.add_argument("--expect-ingest-tag", default=None,
+                    help="v1.4-ingest gate: require >=1 active memory carrying this tag "
+                         "(e.g. ingest-smoke) with a source_file: facet")
     a = ap.parse_args()
     con = sqlite3.connect(f"file:{a.db}?mode=ro&immutable=1", uri=True)
     con.enable_load_extension(True); sqlite_vec.load(con); con.enable_load_extension(False)
@@ -96,6 +99,14 @@ def main():
             date_left += sum(1 for t in ts if is_date_token(t))
     gates.append(("any-facet coverage >= 80%", faceted/N >= 0.8, f"{round(100*faceted/N)}%"))
     gates.append(("0 relocatable date tags left in tags column", date_left == 0, str(date_left)))
+
+    # 2b. v1.4-ingest gate (only when --expect-ingest-tag is given): ingested
+    # documents must exist and carry the source_file: facet the pipeline stamps
+    if a.expect_ingest_tag:
+        hits = [r for r in rows if a.expect_ingest_tag in ptags(r[2])]
+        sourced = sum(1 for r in hits if any(t.startswith("source_file:") for t in ptags(r[2])))
+        gates.append((f"ingested memories tagged '{a.expect_ingest_tag}' with source_file facet",
+                      len(hits) >= 1 and sourced == len(hits), f"{sourced}/{len(hits)}"))
 
     # 3. date path (auto-discover a dated instance)
     dated = None

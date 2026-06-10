@@ -85,3 +85,39 @@ Set `MCP_CONSOLIDATION_ENABLED=false` in your memory-server.sh (or delete the
 whole block), then `launchctl unload` + `load` + kickstart. The scheduler stops
 (`"running":false`), everything else is untouched. Nuclear option: `rollback.sh
 full` with the Step-1 quiesced snapshot — returns the DB to the pause moment.
+
+---
+
+# v1.4-ingest — document ingestion (same gated style)
+
+Nothing to enable: ingestion ships ON in 10.26.5. This entry is the proven
+procedure + the gate.
+
+## Step 1 — Sandbox first (a copy, never your live DB)
+Stand up a throwaway brain on a spare port with `MCP_MEMORY_BASE_DIR` pointed
+at a scratch copy of your DB (same pattern as every update). Ingest one
+synthetic PDF/MD/CSV via the curl in the README's "Ingesting your documents"
+section, tagged `ingest-test`. **Confirm back:** `/api/documents/history`
+showing `status:completed` and `chunks_stored ≥ 1` per file.
+
+## Step 2 — Prove zero impact
+```bash
+python3 update/tools/verify.py --db <sandbox-db> --expect-ingest-tag ingest-test
+```
+Expect ALL GATES PASS — the ingest gate plus all standing gates (your
+pre-existing memories untouched).
+**Confirm back:** full gate output.
+
+## Step 3 — One live smoke document
+Pick one small, harmless PDF. Upload it to your LIVE brain tagged
+`ingest-smoke,project:<yours>,type:document`. The tag is permanent and
+identifiable forever — that IS the rollback story (zero-deletion: we never
+delete; we know exactly which memories came from the smoke test).
+**Confirm back:** history JSON + a retrieval that quotes the document.
+
+## Step 4 — Gate the live store
+```bash
+python3 update/tools/verify.py --db "$DB" --expect-ingest-tag ingest-smoke \
+  --server-url http://127.0.0.1:<PORT> --api-key-file <INSTALL_DIR>/memory-server-api-key.txt
+```
+**Confirm back:** ALL GATES PASS including the ingest and heartbeat lines.
