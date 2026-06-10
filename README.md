@@ -94,3 +94,36 @@ rm -f ~/Library/LaunchAgents/com.stanleyai.memory-{server,tunnel}.plist
 rm -rf ~/stanley-ai/{memory-venv,data,logs,memory-server.sh,memory-tunnel.sh,config-memory.yml,memory-server-api-key.txt}
 # remove the tunnel + DNS from your Cloudflare account separately
 ```
+
+## Ingesting your documents (v1.4)
+
+Your brain can read documents, not just conversation memories. Supported today:
+**PDF, TXT, MD, CSV, JSON** — all parsed locally on your machine; nothing
+leaves your computer. (DOCX/PPTX/XLSX are intentionally NOT supported yet: the
+upstream path for those sends files to a cloud parsing service, which breaks
+the owner-hosted promise. A local-only path is planned for Update 2.)
+
+Upload through the web API (there is no MCP ingest tool in this engine
+version — the API is the supported surface):
+
+```bash
+curl -X POST http://127.0.0.1:<PORT>/api/documents/upload \
+  -H "Authorization: Bearer $(cat <INSTALL_DIR>/memory-server-api-key.txt)" \
+  -F "file=@/path/to/your.pdf" \
+  -F "tags=project:<yourproject>,type:document" \
+  -F "chunk_size=1000" -F "chunk_overlap=200" -F "memory_type=document"
+```
+
+The pipeline chunks the document and stores each chunk as a memory, stamped
+automatically with `source_file:<name>`, `file_type:<ext>` and an `upload_id:`
+tag, plus rich metadata (page numbers for PDFs, headers for Markdown, row
+ranges for CSV). **Always pass `project:` and `type:document` in the tags
+field** — that keeps ingested content faceted like everything else. Check
+progress with `GET /api/documents/history`, and verify any time with:
+
+```bash
+python3 update/tools/verify.py --db "$DB" --expect-ingest-tag <your-tag>
+```
+
+You can also drag-and-drop files in the built-in dashboard (the Upload section
+on the server's web UI).

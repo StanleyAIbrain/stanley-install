@@ -127,3 +127,36 @@ def test_heartbeat_fails_when_next_daily_missing_or_stale():
     assert not verify_mod.cognition_verdict({"running": True, "jobs_failed": 0})[1]
     st = {"running": True, "next_daily": _next_daily(60), "jobs_failed": 0}
     assert not verify_mod.cognition_verdict(st)[1]
+
+
+# ---------- v1.4-ingest: document gate ----------
+
+def _make_db_with_ingested(path):
+    import sqlite_vec
+    con = sqlite3.connect(path)
+    con.enable_load_extension(True); sqlite_vec.load(con); con.enable_load_extension(False)
+    con.execute("create table memories (id integer primary key, content_hash text,"
+                " content text, tags text, metadata text, deleted_at real)")
+    con.execute("create virtual table memory_embeddings using vec0(content_embedding float[384])")
+    rows = [
+        (1, "h1", "Northwind supplier record", "project:northwind,type:reference", "{}", None),
+        (2, "h2", "Northwind compliance brief chunk", 
+         "ingest-smoke,source_file:brief.pdf,file_type:pdf,type:document", "{}", None),
+    ]
+    con.executemany("insert into memories values (?,?,?,?,?,?)", rows)
+    for i, *_ in rows:
+        vec = [((i * 17 + j) % 89) / 89.0 for j in range(384)]
+        con.execute("insert into memory_embeddings(rowid, content_embedding) values (?, ?)",
+                    (i, struct.pack("384f", *vec)))
+    con.commit(); con.close()
+
+def test_ingest_gate_passes_with_sourced_document(tmp_path):
+    db = tmp_path / "ing.db"; _make_db_with_ingested(db)
+    r = _run_verify(db, "--expect-ingest-tag", "ingest-smoke")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "ingested memories tagged 'ingest-smoke'" in r.stdout
+
+def test_ingest_gate_fails_when_tag_absent(tmp_path):
+    db = tmp_path / "ing.db"; _make_db_with_ingested(db)
+    r = _run_verify(db, "--expect-ingest-tag", "no-such-tag")
+    assert r.returncode == 1

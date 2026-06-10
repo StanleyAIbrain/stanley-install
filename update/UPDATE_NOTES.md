@@ -93,3 +93,30 @@ next scheduled run instead — same guarantee, forward-looking.
 
 **Rollback:** one flag — `MCP_CONSOLIDATION_ENABLED=false` + restart. Tested
 before anything shipped.
+
+---
+
+## v1.4-ingest (June 2026) — your documents become memories
+
+**What changed:** the document-ingestion subsystem that ships in the engine is
+now documented, proven, and gated. PDF / TXT / MD / CSV / JSON parse locally —
+nothing leaves the machine. The pipeline stamps every chunk with
+`source_file:`, `file_type:` and `upload_id:` tags automatically, so ingested
+knowledge stays faceted and auditable; operators add `project:` and
+`type:document` at upload time (no engine patch was needed — store-discipline
+is a tags-at-upload convention).
+
+**Deliberately excluded:** DOCX/PPTX/XLSX. The upstream loader for those
+formats parses via a cloud API (LlamaParse) — customer documents would leave
+the machine, which violates the owner-hosted promise. Deferred to a verified
+local-only path in Update 2.
+
+**Also worth knowing:** this engine version has no MCP ingest tool — the web
+API (`/api/documents/upload`) is the supported surface, and the documents API
+relies on the network-layer gate (keep it bound to 127.0.0.1 / behind your
+Access policy; an app-layer key check for it is on the Update 2 hardening
+list).
+
+**New gate:** `verify.py --expect-ingest-tag <tag>` — requires at least one
+active memory with that tag, all of them carrying the pipeline's
+`source_file:` facet.
