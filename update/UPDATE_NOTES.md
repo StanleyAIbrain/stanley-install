@@ -66,3 +66,30 @@ One versioned release, containing:
 5. **`RUNBOOK.md` + `verify.py` + `rollback.sh`** — self-contained apply/verify/rollback: full backup procedure, service pause/restart notes (including the known ~33-second model reload on restart), post-update verification gates, and both instant (flag-off) and full rollback.
 
 Everything above passed two rounds of proof before reaching you: gated validation and a live re-test on the founding instance, then a full clean-room run — a fresh vanilla install with non-StanleyAI test data, updated using only the runbook, gating zero deletions, fail-open behavior, and working rollback. Your appliance stays fully self-contained — the update is code you run on your own hardware, same as day one.
+
+---
+
+## v1.4-cognition (June 2026) — the self-maintenance engine, on for the first time
+
+**What changed:** every new install (and any island that follows RUNBOOK-v1.4.md)
+now runs the consolidation engine nightly — the "cognition core" that ships in
+the engine but was off by default everywhere. It is configured under a strict
+zero-deletion covenant: forgetting OFF, compression OFF — it can add and score,
+never remove or rewrite. We proved this with machine-checked content-hash-set
+gates, run twice for idempotency, in a sandbox and then live on the founding
+instance.
+
+**What we deliberately left OFF:** the association generator. In 10.26.5 it
+writes every discovered association as a *retrievable memory* and re-mints
+them on every run (~870 per run on a ~1,000-memory store, compounding run over
+run) — measured live; it crowds real memories out of search results. It stays
+off until a safe implementation ships (Update 2).
+
+**New gate:** `verify.py --server-url http://127.0.0.1:<port> --api-key-file …`
+adds a cognition heartbeat check (scheduler running, next daily run within
+48 hours, zero failed jobs). Skips cleanly with a note when consolidation is
+disabled. Note: 10.26.5 exposes no last-run timestamp, so the gate checks the
+next scheduled run instead — same guarantee, forward-looking.
+
+**Rollback:** one flag — `MCP_CONSOLIDATION_ENABLED=false` + restart. Tested
+before anything shipped.

@@ -103,3 +103,27 @@ def test_soft_deleted_rows_are_excluded(tmp_path):
     _make_db(db, n=5, deleted=2)
     r = _run_verify(db, "--expect-count", "5")
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+# ---------- v1.4: cognition heartbeat verdict logic ----------
+
+def _next_daily(hours):
+    import datetime
+    return (datetime.datetime.now() + datetime.timedelta(hours=hours)).isoformat()
+
+def test_heartbeat_skips_cleanly_when_disabled():
+    name, ok, detail = verify_mod.cognition_verdict({"running": False})
+    assert ok and detail == "skipped"
+
+def test_heartbeat_passes_when_running_and_next_daily_soon():
+    st = {"running": True, "next_daily": _next_daily(20), "jobs_failed": 0}
+    assert verify_mod.cognition_verdict(st)[1]
+
+def test_heartbeat_fails_on_failed_jobs():
+    st = {"running": True, "next_daily": _next_daily(20), "jobs_failed": 2}
+    assert not verify_mod.cognition_verdict(st)[1]
+
+def test_heartbeat_fails_when_next_daily_missing_or_stale():
+    assert not verify_mod.cognition_verdict({"running": True, "jobs_failed": 0})[1]
+    st = {"running": True, "next_daily": _next_daily(60), "jobs_failed": 0}
+    assert not verify_mod.cognition_verdict(st)[1]
