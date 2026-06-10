@@ -12,6 +12,16 @@
 LABEL="${LABEL:-com.stanleyai.memory-server}"
 PLIST="${PLIST:-$HOME/Library/LaunchAgents/com.stanleyai.memory-server.plist}"
 SERVER_SH="${SERVER_SH:-$HOME/stanley-ai/memory-server.sh}"
+# Derive port + DB path from the launch script when present (no hardcoded layout);
+# explicit PORT=/DB= env vars override, then launch-script values, then the stock defaults.
+_sh_val() {  # _sh_val VAR_NAME -> value of `export VAR_NAME=...` in SERVER_SH (quotes stripped)
+  [ -f "$SERVER_SH" ] || return 0
+  sed -n "s/^[[:space:]]*export[[:space:]]\{1,\}$1=//p" "$SERVER_SH" | tail -1 | tr -d '"' | tr -d "'"
+}
+PORT="${PORT:-$(_sh_val MCP_HTTP_PORT)}"
+PORT="${PORT:-8765}"
+_BASE_DIR="$(_sh_val MCP_MEMORY_BASE_DIR)"
+if [ -z "${DB:-}" ] && [ -n "$_BASE_DIR" ]; then DB="$_BASE_DIR/sqlite_vec.db"; fi
 DB="${DB:-$HOME/Library/Application Support/mcp-memory/sqlite_vec.db}"
 # Locate the storage file with the BRAIN's venv python (system python3 lacks the module).
 VENV_PY="${VENV_PY:-$HOME/stanley-ai/memory-venv/bin/python3}"
@@ -30,7 +40,7 @@ restart() {
   launchctl kickstart -k "gui/$(id -u)/$LABEL" 2>/dev/null
   for i in $(seq 1 25); do
     sleep 3
-    if lsof -nP -iTCP:8765 -sTCP:LISTEN -t >/dev/null 2>&1; then echo ">> service is up."; return 0; fi
+    if lsof -nP -iTCP:"$PORT" -sTCP:LISTEN -t >/dev/null 2>&1; then echo ">> service is up."; return 0; fi
   done
   echo ">> WARNING: service not listening after ~75s — check $HOME/stanley-ai/logs/memory-server.log"
 }
@@ -55,8 +65,17 @@ case "$1" in
     cp "$CODE_BAK" "$SQLITE_VEC_PY"
     if [ -n "$LAUNCH_BAK" ] && [ -f "$LAUNCH_BAK" ]; then echo ">> restoring launch script"; cp "$LAUNCH_BAK" "$SERVER_SH"; fi
     restart ;;
+  config)
+    # print the resolved configuration (used by tests; safe, makes derivation auditable)
+    echo "LABEL=$LABEL"
+    echo "PLIST=$PLIST"
+    echo "SERVER_SH=$SERVER_SH"
+    echo "PORT=$PORT"
+    echo "DB=$DB"
+    echo "SQLITE_VEC_PY=$SQLITE_VEC_PY" ;;
   *)
     echo "usage: $0 flag-off            # instant date-path disable (recommended first)"
     echo "       $0 full <DB_BACKUP> <CODE_BACKUP> [LAUNCH_BACKUP]   # full restore"
+    echo "       $0 config              # print resolved paths/port (no changes)"
     exit 1 ;;
 esac

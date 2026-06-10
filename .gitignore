@@ -5,3 +5,4 @@ logs/
 *.log
 *.pid
 config-memory.yml
+__pycache__/

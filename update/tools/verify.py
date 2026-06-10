@@ -16,10 +16,13 @@ try:
     import torch; torch.set_num_threads(1)
 except Exception: pass
 
-_MONTHS = {m: i+1 for i, m in enumerate(["january","february","march","april","may","june","july",
-           "august","september","october","november","december"])}
+_FULL_MONTHS = ["january","february","march","april","may","june","july",
+                "august","september","october","november","december"]
+_MONTHS = {m: i+1 for i, m in enumerate(_FULL_MONTHS)}
+# _MNAME must come from the full names only: a length filter over _MONTHS drops "may"
+# (3 chars -> KeyError on any May date) and lets the "sept" abbreviation shadow "September".
+_MNAME = {i+1: m.capitalize() for i, m in enumerate(_FULL_MONTHS)}
 _MONTHS.update({m[:3]: _MONTHS[m] for m in list(_MONTHS)}); _MONTHS["sept"] = 9
-_MNAME = {v: k.capitalize() for k, v in _MONTHS.items() if len(k) > 3}
 _RE = "|".join(sorted(_MONTHS, key=len, reverse=True))
 _DATEPAT = re.compile(r'\b(' + _RE + r')\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+((?:19|20)\d{2}))?\b', re.I)
 
