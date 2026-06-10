@@ -30,9 +30,44 @@ def is_date_token(t):
     return bool(re.match(r'^(?:' + _RE + r')(?:-\d{1,2})?(?:-(?:19|20)\d{2})?$', t.strip(), re.I)) \
         or bool(re.match(r'^\d{4}-\d{1,2}-\d{1,2}$', t.strip()))
 
+def cognition_gate(url, key):
+    """v1.4 heartbeat gate via GET /api/consolidation/status.
+    10.26.5 exposes no last-run timestamp, so the equivalent forward check is:
+    scheduler running, next daily run within 48h, zero failed jobs.
+    Disabled consolidation skips cleanly (gate passes with a note)."""
+    import urllib.request, datetime
+    headers = {"Authorization": f"Bearer {key}"} if key else {}
+    req = urllib.request.Request(f"{url.rstrip('/')}/api/consolidation/status", headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            st = json.loads(r.read())
+    except Exception as e:
+        return ("cognition heartbeat (status endpoint)", False, f"unreachable: {type(e).__name__}")
+    return cognition_verdict(st)
+
+def cognition_verdict(st):
+    """Pure verdict logic (unit-tested separately from the network call)."""
+    import datetime
+    if not st.get("running"):
+        return ("cognition heartbeat (consolidation disabled)", True, "skipped")
+    nd = st.get("next_daily")
+    if not nd:
+        return ("cognition heartbeat: next daily run scheduled", False, "no next_daily")
+    try:
+        secs = (datetime.datetime.fromisoformat(nd) - datetime.datetime.now()).total_seconds()
+        within = 0 <= secs <= 48 * 3600
+    except ValueError:
+        within = False
+    ok = within and st.get("jobs_failed", 0) == 0
+    return ("cognition heartbeat: scheduler running, next daily <48h, 0 failed jobs",
+            ok, f"next_daily={nd} jobs_failed={st.get('jobs_failed')}")
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--db", required=True); ap.add_argument("--expect-count", type=int, default=None)
+    ap.add_argument("--server-url", default=None,
+                    help="e.g. http://127.0.0.1:8765 — adds the v1.4 cognition heartbeat gate")
+    ap.add_argument("--api-key-file", default=None, help="file holding the server API key")
     a = ap.parse_args()
     con = sqlite3.connect(f"file:{a.db}?mode=ro&immutable=1", uri=True)
     con.enable_load_extension(True); sqlite_vec.load(con); con.enable_load_extension(False)
@@ -100,6 +135,11 @@ def main():
         ap2, _ = date_path("record February 29 1999")
         gates.append(("absent date -> FAIL OPEN to vector", ap2 in ("fail-open", None), str(ap2)))
     con.close()
+
+    # 4. v1.4 cognition heartbeat (only when a server URL is provided)
+    if a.server_url:
+        key = open(a.api_key_file).read().strip() if a.api_key_file else None
+        gates.append(cognition_gate(a.server_url, key))
 
     print("=== VERIFY ===")
     allok = True

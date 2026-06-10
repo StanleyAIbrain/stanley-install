@@ -26,5 +26,18 @@ export MCP_OAUTH_ENABLED=false
 export MCP_ALLOW_ANONYMOUS_ACCESS=false
 export MCP_API_KEY="$(cat {{INSTALL_DIR}}/memory-server-api-key.txt)"
 
+# --- v1.4-cognition: consolidation ON with the zero-deletion safety config ---
+# Forgetting/compression stay OFF (zero-deletion covenant — the engine may add,
+# never remove or rewrite). Associations stay OFF in v1.4: 10.26.5 stores each
+# discovered association as a retrievable memory and re-mints them every run
+# (~870/run on a ~1000-memory store, compounding), which pollutes semantic
+# search. Clustering/decay/health stay ON (proven metadata-only).
+# Revert lever: set MCP_CONSOLIDATION_ENABLED=false and restart the service.
+export MCP_CONSOLIDATION_ENABLED=true
+export MCP_ASSOCIATIONS_ENABLED=false
+export MCP_FORGETTING_ENABLED=false
+export MCP_COMPRESSION_ENABLED=false
+export MCP_CONSOLIDATION_ARCHIVE_PATH={{INSTALL_DIR}}/data/consolidation_archive
+
 # Start the memory server (blocks; launchd KeepAlive restarts it)
 exec memory server --http 2>&1
