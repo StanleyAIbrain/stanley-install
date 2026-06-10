@@ -160,3 +160,20 @@ def test_ingest_gate_fails_when_tag_absent(tmp_path):
     db = tmp_path / "ing.db"; _make_db_with_ingested(db)
     r = _run_verify(db, "--expect-ingest-tag", "no-such-tag")
     assert r.returncode == 1
+
+
+# ---------- server-side date gate verdict ----------
+
+def test_server_date_verdict_passes_on_dated_top1():
+    results = [{"memory": {"content": "BRAIN DAILY SCORE — March 21, 2026 baseline"},
+                "similarity_score": 0.95}]
+    name, ok, detail = verify_mod.server_date_verdict(results, "March 21, 2026")
+    assert ok and "0.95" in detail
+
+def test_server_date_verdict_fails_when_top1_undated():
+    results = [{"memory": {"content": "unrelated May 26 retail memo"}, "similarity_score": 0.69},
+               {"memory": {"content": "BRAIN DAILY SCORE — March 21, 2026"}, "similarity_score": 0.95}]
+    assert not verify_mod.server_date_verdict(results, "March 21, 2026")[1]
+
+def test_server_date_verdict_fails_on_empty():
+    assert not verify_mod.server_date_verdict([], "March 21, 2026")[1]

@@ -30,6 +30,32 @@ def is_date_token(t):
     return bool(re.match(r'^(?:' + _RE + r')(?:-\d{1,2})?(?:-(?:19|20)\d{2})?$', t.strip(), re.I)) \
         or bool(re.match(r'^\d{4}-\d{1,2}-\d{1,2}$', t.strip()))
 
+def server_date_verdict(results, dstr):
+    """Pure verdict for the server-side date gate: the production retrieve path
+    must put a memory carrying the queried date string at #1."""
+    if not results:
+        return (f"date query '{dstr}' -> dated instance (via server)", False, "no results")
+    top = results[0].get("memory", {})
+    hit = dstr.lower() in (top.get("content") or "").lower()
+    score = results[0].get("similarity_score")
+    return (f"date query '{dstr}' -> dated instance (via server)", hit,
+            f"top1 score={round(score, 3) if score is not None else '?'}")
+
+def server_date_gate(url, key, dstr):
+    """Query the LIVE retrieve path (Piece C) instead of simulating it — the
+    offline RRF sim predates the server-side date patch and can diverge."""
+    import urllib.request
+    body = json.dumps({"query": f"record {dstr}", "n_results": 5}).encode()
+    headers = {"Content-Type": "application/json"}
+    if key: headers["Authorization"] = f"Bearer {key}"
+    req = urllib.request.Request(f"{url.rstrip('/')}/api/search", data=body, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            results = json.loads(r.read()).get("results", [])
+    except Exception as e:
+        return (f"date query '{dstr}' (via server)", False, f"unreachable: {type(e).__name__}")
+    return server_date_verdict(results, dstr)
+
 def cognition_gate(url, key):
     """v1.4 heartbeat gate via GET /api/consolidation/status.
     10.26.5 exposes no last-run timestamp, so the equivalent forward check is:
@@ -138,10 +164,15 @@ def main():
             like = sorted(like, key=lambda i: -sims[i])
             return "date-hybrid", rrf([vec, like])[0]
         di, dstr = dated
-        path, top = date_path(f"record {dstr}")
-        # accept the exact instance OR any memory carrying the same date string (recurring same-date entries)
-        hit = path == "date-hybrid" and (top == di or dstr.lower() in C[top].lower())
-        gates.append((f"date query '{dstr}' -> dated instance", hit, f"{path}"))
+        if a.server_url:
+            # test the REAL production retrieve path, not the offline sim
+            key = open(a.api_key_file).read().strip() if a.api_key_file else None
+            gates.append(server_date_gate(a.server_url, key, dstr))
+        else:
+            path, top = date_path(f"record {dstr}")
+            # accept the exact instance OR any memory carrying the same date string (recurring same-date entries)
+            hit = path == "date-hybrid" and (top == di or dstr.lower() in C[top].lower())
+            gates.append((f"date query '{dstr}' -> dated instance", hit, f"{path}"))
         # absent date -> fail open
         ap2, _ = date_path("record February 29 1999")
         gates.append(("absent date -> FAIL OPEN to vector", ap2 in ("fail-open", None), str(ap2)))
