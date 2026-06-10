@@ -32,11 +32,19 @@ def is_date_token(t):
 
 def server_date_verdict(results, dstr):
     """Pure verdict for the server-side date gate: the production retrieve path
-    must put a memory carrying the queried date string at #1."""
+    must put a memory carrying the queried date at #1. Date matching is
+    normalized ("March 21 2026" == "March 21, 2026" == "March 09"/"March 9"),
+    mirroring how the server's date path matches content."""
     if not results:
         return (f"date query '{dstr}' -> dated instance (via server)", False, "no results")
-    top = results[0].get("memory", {})
-    hit = dstr.lower() in (top.get("content") or "").lower()
+    m = _DATEPAT.search(dstr)
+    if m:
+        mon = _MNAME[_MONTHS[m.group(1).lower()]]; day = int(m.group(2)); yr = m.group(3)
+        pat = re.compile(rf"{mon}\.?\s+0?{day}(?:st|nd|rd|th)?(?:,?\s+{yr})?" if yr
+                         else rf"{mon}\.?\s+0?{day}(?:st|nd|rd|th)?", re.I)
+        hit = bool(pat.search(results[0].get("memory", {}).get("content") or ""))
+    else:
+        hit = dstr.lower() in (results[0].get("memory", {}).get("content") or "").lower()
     score = results[0].get("similarity_score")
     return (f"date query '{dstr}' -> dated instance (via server)", hit,
             f"top1 score={round(score, 3) if score is not None else '?'}")

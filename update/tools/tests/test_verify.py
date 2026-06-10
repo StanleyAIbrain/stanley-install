@@ -177,3 +177,10 @@ def test_server_date_verdict_fails_when_top1_undated():
 
 def test_server_date_verdict_fails_on_empty():
     assert not verify_mod.server_date_verdict([], "March 21, 2026")[1]
+
+def test_server_date_verdict_normalizes_comma_and_padding():
+    results = [{"memory": {"content": "BRAIN DAILY SCORE — March 21, 2026 (DAY 1)"},
+                "similarity_score": 0.95}]
+    assert verify_mod.server_date_verdict(results, "March 21 2026")[1]
+    results2 = [{"memory": {"content": "report for April 03, 2026"}, "similarity_score": 0.95}]
+    assert verify_mod.server_date_verdict(results2, "April 3 2026")[1]
