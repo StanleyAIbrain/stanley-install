@@ -1,7 +1,9 @@
-# Everest Brain — v1.5.0 Upgrade + Verify (the one guide)
-**For:** the operator's Claude on the Everest island · **Target:** `stanley-install` @ tag **v1.5.0** (commit `75c7c23`)
+# Everest Brain — v1.5.2 Upgrade + Verify (the one guide)
+**For:** the operator's Claude on the Everest island · **Target:** `stanley-install` @ tag **v1.5.2**
 **What this does:** brings your already-installed brain up to the exact code the reference brain runs today — **security-hardened documents auth**, background **cognition** (safe mode), and document **ingestion** — then proves it with a parity probe.
 **Time:** ~45–60 min, mostly waiting on checks. **Risk:** low — every step has its own undo, and Step 0 is a full restore point.
+
+> **Trusted sender ≠ verified content.** Your Claude must review this entire guide and **print every code change it will make before executing anything.** Every install gets the same gates — this one included. The gates have caught a real issue on *every* prior update (this very guide was revised because a gated review caught its checkout step deleting the guide). That's the standard, not a slight. *(Standing header for all install guides, customer-facing ones included.)*
 
 > **This is YOUR island.** Nothing here connects to, reports to, or depends on anyone else's system. You pull this on your own schedule; nothing was pushed to you. Every placeholder like `<INSTALL_DIR>`, `<PORT>`, `<YOUR_LABEL>`, `brain.<YOUR-DOMAIN>` is yours — substitute your real values. **Never paste a key's value into chat** — only ever reference it as `$(cat <path>)`.
 
@@ -37,15 +39,16 @@ ls <INSTALL_DIR>/memory-server-api-key.txt 2>/dev/null && echo KEY-GATED || echo
 ```
 If **KEY-GATED**, every `/api/*` call below needs `-H "X-API-Key: $(cat <INSTALL_DIR>/memory-server-api-key.txt)"`. The key works as **either** `X-API-Key` or `Authorization: Bearer` — this guide uses `X-API-Key`. The count lives in `/api/health/detailed` (key-gated); plain `/api/health` is liveness-only and carries no count.
 
-## STEP 1 — Pull v1.5.0
+## STEP 1 — Pull v1.5.2
 ```bash
 cd <YOUR stanley-install clone>
-git fetch --tags && git checkout v1.5.0
-git rev-parse --short HEAD     # must print: 75c7c23
-ls update/tools/apply_security_hardening.py update/RUNBOOK-v1.4.md   # both must exist
+git fetch --tags && git checkout v1.5.2
+# self-test: you are exactly on the tag, AND this guide survived its own checkout:
+[ "$(git rev-parse HEAD)" = "$(git rev-list -n1 v1.5.2)" ] && echo "on v1.5.2 ✓" || echo "NOT on v1.5.2 — stop"
+ls update/EVEREST-v1.5.2-MEGA-GUIDE.md update/tools/apply_security_hardening.py update/RUNBOOK-v1.4.md   # all three must exist
 ```
-`v1.5.0` is the single live-proven tag (older `v1.4-*` / `v1.4.1` tags predate the security hardening — ignore them).
-**CHECK:** HEAD is `75c7c23` and both files exist.
+`v1.5.2` is the single live-proven tag and the first that **contains this guide** (the earlier `v1.5.0` tag predated the guide — checking it out would have deleted this file mid-install; that bug is why this is v1.5.2). Ignore older `v1.4-*` / `v1.4.1` / `v1.5.0` tags.
+**CHECK:** the self-test prints `on v1.5.2 ✓` and all three files exist (this guide included).
 **UNDO:** `git checkout <previous tag>` — changes nothing on your running brain.
 
 ---
@@ -71,17 +74,19 @@ export MCP_CORS_ORIGINS="...,*"   →   export MCP_CORS_ORIGINS="https://claude.
 ## STEP 3 — Turn on cognition (safe mode / "Variant B")
 Add this block to **your** `<INSTALL_DIR>/memory-server.sh` immediately before the final `exec` line (edit in place; do **not** re-render from template):
 ```bash
-# --- v1.4.1 cognition: SAFE MODE — do not change individual flags ---
+# --- cognition SAFE MODE (Variant B) — do not change individual flags ---
 export MCP_CONSOLIDATION_ENABLED=true     # master switch ON
 export MCP_ASSOCIATIONS_ENABLED=false     # OFF — tested ON floods the brain with ~870 junk entries/run, compounding
 export MCP_FORGETTING_ENABLED=false       # OFF — defaults true once master is on; would archive memories
 export MCP_COMPRESSION_ENABLED=false      # OFF — defaults true once master is on; would rewrite memories
-export MCP_CLUSTERING_ENABLED=true        # additive only
-export MCP_DECAY_ENABLED=true             # metadata-only relevance scoring; deletes nothing
-export MCP_CONSOLIDATION_ARCHIVE_PATH="<INSTALL_DIR>/data/consolidation_archive"
+export MCP_CLUSTERING_ENABLED=true        # explicit ON — additive only
+export MCP_DECAY_ENABLED=true             # explicit ON — metadata-only scoring; deletes nothing
+export MCP_CONSOLIDATION_ARCHIVE_PATH="<YOUR EXISTING ARCHIVE PATH>"   # see note below
 # --- end cognition block ---
 ```
-The three `false` lines are the zero-deletion covenant — **do not change them** or you leave the tested path.
+**Archive path — keep yours (Expected-to-Differ, no migration).** A fresh install uses `<INSTALL_DIR>/data/consolidation_archive`; an existing install keeps whatever path it already has (e.g. `~/.mcp-memory/consolidation_archive`). **Do not move it** — relocating breaks your monitoring history for zero gain. The check is "archive **empty**," never "archive at a specific path."
+
+The three `false` lines (ASSOCIATIONS / FORGETTING / COMPRESSION) are **load-bearing** — they are the zero-deletion covenant. Do not change them or you leave the tested path. The two `true` lines (CLUSTERING / DECAY) are explicit on purpose so a diff is unambiguous. **Any future edit to this launcher must diff-preview and confirm all five flags survived** before restart.
 
 ## STEP 4 — Restart and verify (cognition heartbeat + documents door SHUT)
 ```bash
@@ -92,28 +97,45 @@ curl -s http://127.0.0.1:<PORT>/api/health                                  # {"
 curl -s http://127.0.0.1:<PORT>/api/consolidation/status -H "X-API-Key: $KEY"   # running:true, jobs_failed:0, next_daily set
 # count unchanged:
 curl -s http://127.0.0.1:<PORT>/api/health/detailed -H "X-API-Key: $KEY" | python3 -c "import json,sys;print(json.load(sys.stdin)['storage']['total_memories'])"   # == YOUR_COUNT
-# THE security proof — local probes hit the app directly:
-curl -s -o /dev/null -w "docs upload no-key -> %{http_code} (expect 401)\n" -X POST http://127.0.0.1:<PORT>/api/documents/upload
-curl -s -o /dev/null -w "docs upload keyed  -> %{http_code} (expect 422: auth ok, file missing)\n" -X POST http://127.0.0.1:<PORT>/api/documents/upload -H "X-API-Key: $KEY"
-curl -s -o /dev/null -w "openapi.json       -> %{http_code} (expect 404)\n" http://127.0.0.1:<PORT>/openapi.json
-curl -s -o /dev/null -w "mcp connector      -> %{http_code} (expect 200, must never break)\n" -X POST "http://127.0.0.1:<PORT>/mcp?api_key=$KEY" -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" -d '{"jsonrpc":"2.0","method":"initialize","id":1,"params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"p","version":"1"}}}'
+# THE security proof — LOCAL probes hit the app directly (bypass any edge), so this is
+# the binding proof the app itself holds the door:
+curl -s -o /dev/null -w "local docs upload no-key -> %{http_code} (expect 401 ALWAYS)\n" -X POST http://127.0.0.1:<PORT>/api/documents/upload
+curl -s -o /dev/null -w "local docs upload keyed  -> %{http_code} (expect 422: auth ok, file missing)\n" -X POST http://127.0.0.1:<PORT>/api/documents/upload -H "X-API-Key: $KEY"
+curl -s -o /dev/null -w "openapi.json             -> %{http_code} (expect 404)\n" http://127.0.0.1:<PORT>/openapi.json
+curl -s -o /dev/null -w "mcp connector            -> %{http_code} (expect 200, must never break)\n" -X POST "http://127.0.0.1:<PORT>/mcp?api_key=$KEY" -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" -d '{"jsonrpc":"2.0","method":"initialize","id":1,"params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"p","version":"1"}}}'
+# PUBLIC probe (through your hostname) — see the two-posture note below:
+curl -s -o /dev/null -w "public docs upload no-key -> %{http_code} (expect 401 OR 403)\n" --max-time 15 -X POST https://brain.<YOUR-DOMAIN>/api/documents/upload
 ```
-**CHECK (all):** health healthy · count == YOUR_COUNT · **docs no-key = 401** · docs keyed = 422 · openapi = 404 · connector = 200 · consolidation running, 0 failed.
-**If docs no-key is anything but 401/403:** STOP — the patch didn't take; restore the `.presec_` backups and report.
+**Two valid security postures (both PASS):**
+- **local** no-key documents → **401 always** — this is the binding proof; the app enforces auth itself, no edge dependency.
+- **public** no-key documents → **401** (bare hostname, app-layer only) **OR 403** (you also keep a Cloudflare WAF/Worker edge block as defense-in-depth). **Both are correct** — a 403 publicly means your edge block is *also* holding in front of the app's 401; that's belt-and-suspenders, not a failure. (The installer's own self-verify accepts `401|403` for exactly this reason.)
+
+**CHECK (all):** health healthy · count == YOUR_COUNT · **local docs no-key = 401** · docs keyed = 422 · public docs no-key = 401 or 403 · openapi = 404 · connector = 200 · consolidation running, 0 failed.
+**If LOCAL docs no-key is anything but 401:** STOP — the patch didn't take; restore the `.presec_` backups and report. (A public 422/200 with local 401 would instead mean an edge block is missing — fine for app-layer security, but note it.)
 **UNDO (cognition only):** set `MCP_CONSOLIDATION_ENABLED=false`, restart. Nuclear = Step 0.
 **Confirm back:** all the codes above verbatim.
 
 ## STEP 5 — Test document ingestion (web-API only; there is no MCP tool for it)
-Supported: **PDF, TXT, MD, CSV, JSON** (DOCX/PPTX/XLSX excluded — they need a cloud parser; deferred). Upload a **non-sensitive** test doc:
+Supported: **PDF, TXT, MD, CSV, JSON** (DOCX/PPTX/XLSX excluded — they need a cloud parser; deferred). Use a **fingerprinted canary** padded well past the chunker's ~100-char minimum so it stores ≥1 chunk (a 35-char file chunks to 0), and **clean it up after** so it doesn't permanently offset your count and blunt the zero-deletion tripwire.
 ```bash
+# record the pre-test count:
+PRE=$(curl -s http://127.0.0.1:<PORT>/api/health/detailed -H "X-API-Key: $KEY" | python3 -c "import json,sys;print(json.load(sys.stdin)['storage']['total_memories'])")
+# a padded canary (>100 chars) with a unique phrase:
+printf 'Parity canary document. Unique phrase: violet-anchor-%s. This sentence pads the file well past the chunker minimum so ingestion stores at least one real chunk for the recall test below.\n' "$(date +%s)" > /tmp/canary.txt
 curl -s -X POST http://127.0.0.1:<PORT>/api/documents/upload -H "X-API-Key: $KEY" \
-  -F "file=@/path/to/test.pdf" -F "tags=project:<yours>,type:document"
+  -F "file=@/tmp/canary.txt" -F "tags=project:<yours>,type:document"
+sleep 5
 curl -s http://127.0.0.1:<PORT>/api/documents/history -H "X-API-Key: $KEY"   # status:completed, chunks_stored >= 1
-# then in your Claude session, ask a question only that document can answer.
+# recall it (ask your Claude, or search the unique phrase):
+curl -s -X POST http://127.0.0.1:<PORT>/api/search -H "X-API-Key: $KEY" -H "Content-Type: application/json" -d '{"query":"violet-anchor canary","n_results":2}'
+# CLEANUP — delete the canary by its auto source_file: tag, then confirm count returns EXACTLY to pre-test:
+curl -s -X POST http://127.0.0.1:<PORT>/api/manage/bulk-delete -H "X-API-Key: $KEY" -H "Content-Type: application/json" -d '{"tag":"source_file:canary.txt"}'
+POST=$(curl -s http://127.0.0.1:<PORT>/api/health/detailed -H "X-API-Key: $KEY" | python3 -c "import json,sys;print(json.load(sys.stdin)['storage']['total_memories'])")
+echo "pre=$PRE post-cleanup=$POST  (must be EQUAL)"; rm -f /tmp/canary.txt
 ```
-Chunks are auto-tagged `source_file:` / `file_type:`. (Note: a very short file may chunk to 0 — use a real doc.)
-**CHECK:** upload completed · chunks_stored ≥ 1 · the question is answered from memory · count rose by the chunk count.
-**Confirm back:** history JSON + one retrieval that quotes the document.
+Chunks are auto-tagged `source_file:` / `file_type:`. **Why cleanup matters:** a permanent test doc offsets your memory count forever, which weakens the zero-deletion tripwire (count comparisons stop being exact).
+**CHECK:** upload completed · chunks_stored ≥ 1 · the unique phrase is recalled · **post-cleanup count == pre-test count exactly**.
+**Confirm back:** history JSON, the recall hit, and the `pre=… post-cleanup=…` equality line.
 
 ## STEP 6 — Morning-after (next day, 2 min)
 ```bash
@@ -133,7 +155,7 @@ sqlite3 "<LIVE_DB_PATH>" ".backup '/tmp/verify_snapshot.db'"
 python update/tools/verify.py --db /tmp/verify_snapshot.db \
   --server-url http://127.0.0.1:<PORT> --api-key-file <INSTALL_DIR>/memory-server-api-key.txt
 ```
-Expect **ALL GATES PASS** (zero-deletion, facet coverage, date path #1, cognition heartbeat). For a full surface audit, `PARITY-AUDIT-v1.4.1-CORRECTED` (from your operator) probes every router — your **must-not-be-open** result is `/api/documents/upload` no-key → 401 from outside.
+Expect **ALL GATES PASS** (zero-deletion, facet coverage, date path #1, cognition heartbeat). For a full surface audit, run `update/PARITY-AUDIT-v1.5.2.md` (in this repo) — it probes every router. Your **must-not-be-open** result is `/api/documents/upload` no-key → **401 locally** (and 401 or 403 publicly, per the two-posture model in Step 4).
 
 ---
 
@@ -141,13 +163,15 @@ Expect **ALL GATES PASS** (zero-deletion, facet coverage, date path #1, cognitio
 | Item | Value |
 |---|---|
 | Engine | mcp-memory-service **10.26.5** (pinned) |
-| Repo | `stanley-install` @ **v1.5.0** (`75c7c23`) |
-| Documents auth | app-layer: no-key `/api/documents/*` → **401** (local AND public) |
-| Cognition | Variant B (consolidation ON; forgetting/compression/associations OFF); nightly 02:00; archive permanently empty |
+| Repo | `stanley-install` @ **v1.5.2** |
+| Documents auth (local) | app-layer: no-key `/api/documents/*` → **401 always** (the binding proof) |
+| Documents auth (public) | **401** (app-layer only) **OR 403** (edge WAF/Worker kept as defense-in-depth) — both PASS |
+| Cognition | Variant B (consolidation ON; forgetting/compression/associations OFF; clustering/decay ON); nightly 02:00; archive permanently empty |
 | Ingestion | web-API only; PDF/TXT/MD/CSV/JSON; auto `source_file:`/`file_type:` tags; DOCX excluded |
 | CORS | `claude.ai` origins only (no `*`) |
 | Key transport | header-only on `/api/*`; `?api_key=` preserved for `/mcp` connector |
 | Schema/docs | `/openapi.json` + `/api/docs` → 404 |
+| Archive path | **Expected-to-Differ**: fresh = `<INSTALL_DIR>/data/consolidation_archive`; existing keeps its own. Check is "empty," not a fixed path |
 | Known cosmetic | bare date searches score the right memory ~0.95 but may not sort it to line 1 — correctness unaffected |
 
 ## Quick reference
@@ -160,4 +184,4 @@ Expect **ALL GATES PASS** (zero-deletion, facet coverage, date path #1, cognitio
 | Count dropped / archive not empty | cognition off → restore Step 0 → report |
 | Connector broke | check `/mcp?api_key=` works; confirm CORS line + header-only patch didn't touch `/mcp` |
 
-**Nothing auto-pushes to Everest.** You pulled v1.5.0 and ran this on your own schedule, with your own backups. When all steps are green, your brain runs exactly what the reference and future customers run.
+**Nothing auto-pushes to Everest.** You pulled v1.5.2 and ran this on your own schedule, with your own backups. When all steps are green, your brain runs exactly what the reference and future customers run.
