@@ -1,4 +1,4 @@
-# Install Parity Audit — v1.5.2 Reference
+# Install Parity Audit — v1.5.3 Reference
 **Operator: hand this entire file to your Claude and say: "Run this audit top to bottom and produce the report."**
 **Purpose: verify your install is functionally identical to the proven reference install — every line of code, every setting, every safety flag, every working function — and produce one report file to send back for analysis.**
 **Mode: READ-ONLY except for two tiny, reversible functional tests (clearly marked). Nothing in this audit deletes, rewrites, or reconfigures anything.**
@@ -71,7 +71,7 @@ python --version
 
 ## SECTION 2 — Repo & Code Parity ("every line of code")
 
-This is the literal every-line check. If the working tree at tag v1.5.2 has **zero diff**, then every line of code in your install package is byte-identical to the reference. Any local modification shows up here.
+This is the literal every-line check. If the working tree at tag v1.5.3 has **zero diff**, then every line of code in your install package is byte-identical to the reference. Any local modification shows up here.
 
 ```bash
 cd ~/stanley-install   # or wherever your clone lives — record the actual path
@@ -79,15 +79,15 @@ git remote -v                          # must point at StanleyAIbrain/stanley-in
 git fetch --tags
 git describe --tags                    # what you're actually on
 git rev-parse HEAD                     # full commit
-git rev-parse HEAD; git rev-list -n1 v1.5.2   # the two must match (you are on the tag)
+git rev-parse HEAD; git rev-list -n1 v1.5.3   # the two must match (you are on the tag)
 ```
-`AUD-2.1 | ? | tag=<tag>, HEAD==rev-list? | reference = v1.5.2 (HEAD must equal `git rev-list -n1 v1.5.2`). An older tag = a FINDING (record it, don't upgrade mid-audit)`
+`AUD-2.1 | ? | tag=<tag>, HEAD==rev-list? | reference = v1.5.3 (HEAD must equal `git rev-list -n1 v1.5.3`). An older tag = a FINDING (record it, don't upgrade mid-audit)`
 
 ```bash
 # 2.2 THE every-line check: zero diff between your tree and the tag
 git status --porcelain                 # must be EMPTY
-git diff v1.5.2 --stat                 # must be EMPTY
-git diff v1.5.2 | head -200            # if anything appears, capture ALL of it in the appendix
+git diff v1.5.3 --stat                 # must be EMPTY
+git diff v1.5.3 | head -200            # if anything appears, capture ALL of it in the appendix
 ```
 `AUD-2.2 | ? | <empty / N files differ / mode-only> | empty = every line identical. A **mode-only** change (e.g. 100644→100755 from a local chmod +x during dashboard setup, 0 content bytes) is **DIFFERS, not FAIL** — note which files. A content diff (any insertions/deletions) = FAIL with full diff in appendix.`
 
@@ -138,7 +138,7 @@ Reference values — these are the safety covenant, any deviation is a FAIL:
 | MCP_DECAY_ENABLED | true |
 | MCP_CONSOLIDATION_ARCHIVE_PATH | set explicitly |
 
-**Special case:** if MCP_CONSOLIDATION_ENABLED is absent/false, you haven't installed v1.5.2 yet — record `AUD-3.2 | SKIP | not yet installed | audit still valuable as pre-install baseline` and skip Section 8.
+**Special case:** if MCP_CONSOLIDATION_ENABLED is absent/false, you haven't installed v1.5.3 yet — record `AUD-3.2 | SKIP | not yet installed | audit still valuable as pre-install baseline` and skip Section 8.
 `AUD-3.2 | ? | <all 7 observed values> | compare table above`
 
 ```bash
@@ -266,7 +266,7 @@ curl -s -o /dev/null -w "search-nokey:%{http_code}\n" --max-time 15 -X POST http
 # an edge block is its ONLY lock: Access challenge on Posture B, or a WAF/firewall 403 on Posture A)
 curl -s -o /dev/null -w "%{http_code}\n" --max-time 15 -X POST https://<YOUR-BRAIN-HOSTNAME>/api/documents/upload
 ```
-`AUD-6.4 | ? | <code> | PASS = Access challenge (302/403 to login) on Posture B, or WAF/firewall 403 on Posture A. FAIL-CRITICAL = anything that reaches the app (e.g. 400/422 validation error or a working upload response) — the upload door is publicly open; mitigate immediately (WAF rule for /api/documents/* or Access on the hostname).`
+`AUD-6.4 | ? | <code> | PASS = public no-key documents is REFUSED: 401 from the app (Posture A, bare hostname), OR 403/Access-challenge at the edge (Posture A+WAF, or Posture B). FAIL-CRITICAL = the route is SERVED/accepted with no key (a working upload response or a 2xx/422 that indicates the request was processed past auth) — the upload door is publicly open; mitigate immediately. (On v1.5.2+ a no-key request is refused at 401 before validation; a 422 would only appear on an unpatched install. The binding FAIL-CRITICAL test remains the LOCAL no-key probe — see line-38 preamble.)`
 
 ```bash
 # 6.5 Dashboard fail-closed + OTP-only check
@@ -439,11 +439,11 @@ Send that one file back. The analysis on this side diffs it against the referenc
 | Item | Reference value |
 |---|---|
 | Brain version | mcp-memory-service **10.26.5** (pinned) |
-| Repo | StanleyAIbrain/stanley-install @ **v1.5.2**, zero local diff |
+| Repo | StanleyAIbrain/stanley-install @ **v1.5.3**, zero local diff |
 | Embeddings | all-MiniLM-L6-v2, **384-dim**, sqlite-vec, WAL |
 | Cognition | Variant B exactly (table in 3.2), nightly 02:00, archive permanently empty |
 | Date retrieval | HYBRID_DATE_ENABLED=true, dated queries boosted ~0.95 |
 | Ingestion | web-API only, PDF/TXT/MD/CSV/JSON, auto source_file:/file_type: tags, DOCX excluded |
-| Security posture | **Two valid postures.** A: public hostname, key-gated `/api/*` data routes (key accepted as `X-API-Key` OR `Authorization: Bearer` — both verified live), **manually-added** WAF/firewall 403 on `/api/documents/*` (REQUIRED — the installer does not create it and those routes have no app-layer key check), public `/api/health` liveness only, connector via `/mcp?api_key=`. B: Cloudflare Access fronts the hostname (needs `/mcp` bypass/service-token). Both: **dashboard** always behind Access (email OTP only, single-email allowlist, no Google IdP), fail-closed, server-side key injection, zero secrets in repo/logs. |
+| Security posture | **Two valid postures.** A: public hostname, key-gated `/api/*` data routes (key accepted as `X-API-Key` OR `Authorization: Bearer` — both verified live) **including `/api/documents/*`, which enforce the key in the app itself as of v1.5.2 (router-level `require_read_access`)**; public no-key documents → **401 from the app**. An optional Cloudflare WAF/Worker 403 on `/api/documents/*` may be kept as **defense-in-depth** (not required). Public `/api/health` liveness only, connector via `/mcp?api_key=`. B: Cloudflare Access fronts the hostname (needs `/mcp` bypass/service-token). Both: **dashboard** always behind Access (email OTP only, single-email allowlist, no Google IdP), fail-closed, server-side key injection, zero secrets in repo/logs. |
 | Quality gates | verify.py full suite PASS, exit 0 |
 | Known-acceptable quirks | /recommendations 404s; bare date queries score-boost without re-sort (cosmetic, queued for Update 2) |
