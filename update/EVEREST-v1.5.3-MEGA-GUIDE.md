@@ -1,5 +1,5 @@
-# Everest Brain — v1.5.2 Upgrade + Verify (the one guide)
-**For:** the operator's Claude on the Everest island · **Target:** `stanley-install` @ tag **v1.5.2**
+# Everest Brain — v1.5.3 Upgrade + Verify (the one guide)
+**For:** the operator's Claude on the Everest island · **Target:** `stanley-install` @ tag **v1.5.3**
 **What this does:** brings your already-installed brain up to the exact code the reference brain runs today — **security-hardened documents auth**, background **cognition** (safe mode), and document **ingestion** — then proves it with a parity probe.
 **Time:** ~45–60 min, mostly waiting on checks. **Risk:** low — every step has its own undo, and Step 0 is a full restore point.
 
@@ -39,16 +39,16 @@ ls <INSTALL_DIR>/memory-server-api-key.txt 2>/dev/null && echo KEY-GATED || echo
 ```
 If **KEY-GATED**, every `/api/*` call below needs `-H "X-API-Key: $(cat <INSTALL_DIR>/memory-server-api-key.txt)"`. The key works as **either** `X-API-Key` or `Authorization: Bearer` — this guide uses `X-API-Key`. The count lives in `/api/health/detailed` (key-gated); plain `/api/health` is liveness-only and carries no count.
 
-## STEP 1 — Pull v1.5.2
+## STEP 1 — Pull v1.5.3
 ```bash
 cd <YOUR stanley-install clone>
-git fetch --tags && git checkout v1.5.2
+git fetch --tags && git checkout v1.5.3
 # self-test: you are exactly on the tag, AND this guide survived its own checkout:
-[ "$(git rev-parse HEAD)" = "$(git rev-list -n1 v1.5.2)" ] && echo "on v1.5.2 ✓" || echo "NOT on v1.5.2 — stop"
-ls update/EVEREST-v1.5.2-MEGA-GUIDE.md update/tools/apply_security_hardening.py update/RUNBOOK-v1.4.md   # all three must exist
+[ "$(git rev-parse HEAD)" = "$(git rev-list -n1 v1.5.3)" ] && echo "on v1.5.3 ✓" || echo "NOT on v1.5.3 — stop"
+ls update/EVEREST-v1.5.3-MEGA-GUIDE.md update/tools/apply_security_hardening.py update/RUNBOOK-v1.4.md   # all three must exist
 ```
-`v1.5.2` is the single live-proven tag and the first that **contains this guide** (the earlier `v1.5.0` tag predated the guide — checking it out would have deleted this file mid-install; that bug is why this is v1.5.2). Ignore older `v1.4-*` / `v1.4.1` / `v1.5.0` tags.
-**CHECK:** the self-test prints `on v1.5.2 ✓` and all three files exist (this guide included).
+`v1.5.3` is the current live-proven tag and contains this guide. (The `v1.5.0` tag predated the guide — checking it out would have deleted this file mid-install; **v1.5.2** fixed that, and **v1.5.3** corrected two stale audit-text contradictions.) Ignore older `v1.4-*` / `v1.4.1` / `v1.5.0` / `v1.5.2` tags.
+**CHECK:** the self-test prints `on v1.5.3 ✓` and all three files exist (this guide included).
 **UNDO:** `git checkout <previous tag>` — changes nothing on your running brain.
 
 ---
@@ -155,7 +155,7 @@ sqlite3 "<LIVE_DB_PATH>" ".backup '/tmp/verify_snapshot.db'"
 python update/tools/verify.py --db /tmp/verify_snapshot.db \
   --server-url http://127.0.0.1:<PORT> --api-key-file <INSTALL_DIR>/memory-server-api-key.txt
 ```
-Expect **ALL GATES PASS** (zero-deletion, facet coverage, date path #1, cognition heartbeat). For a full surface audit, run `update/PARITY-AUDIT-v1.5.2.md` (in this repo) — it probes every router. Your **must-not-be-open** result is `/api/documents/upload` no-key → **401 locally** (and 401 or 403 publicly, per the two-posture model in Step 4).
+Expect **ALL GATES PASS** (zero-deletion, facet coverage, date path #1, cognition heartbeat). For a full surface audit, run `update/PARITY-AUDIT-v1.5.3.md` (in this repo) — it probes every router. Your **must-not-be-open** result is `/api/documents/upload` no-key → **401 locally** (and 401 or 403 publicly, per the two-posture model in Step 4).
 
 ---
 
@@ -163,7 +163,7 @@ Expect **ALL GATES PASS** (zero-deletion, facet coverage, date path #1, cognitio
 | Item | Value |
 |---|---|
 | Engine | mcp-memory-service **10.26.5** (pinned) |
-| Repo | `stanley-install` @ **v1.5.2** |
+| Repo | `stanley-install` @ **v1.5.3** |
 | Documents auth (local) | app-layer: no-key `/api/documents/*` → **401 always** (the binding proof) |
 | Documents auth (public) | **401** (app-layer only) **OR 403** (edge WAF/Worker kept as defense-in-depth) — both PASS |
 | Cognition | Variant B (consolidation ON; forgetting/compression/associations OFF; clustering/decay ON); nightly 02:00; archive permanently empty |
@@ -184,4 +184,4 @@ Expect **ALL GATES PASS** (zero-deletion, facet coverage, date path #1, cognitio
 | Count dropped / archive not empty | cognition off → restore Step 0 → report |
 | Connector broke | check `/mcp?api_key=` works; confirm CORS line + header-only patch didn't touch `/mcp` |
 
-**Nothing auto-pushes to Everest.** You pulled v1.5.2 and ran this on your own schedule, with your own backups. When all steps are green, your brain runs exactly what the reference and future customers run.
+**Nothing auto-pushes to Everest.** You pulled v1.5.3 and ran this on your own schedule, with your own backups. When all steps are green, your brain runs exactly what the reference and future customers run.
