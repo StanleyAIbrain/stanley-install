@@ -121,3 +121,48 @@ python3 update/tools/verify.py --db "$DB" --expect-ingest-tag ingest-smoke \
   --server-url http://127.0.0.1:<PORT> --api-key-file <INSTALL_DIR>/memory-server-api-key.txt
 ```
 **Confirm back:** ALL GATES PASS including the ingest and heartbeat lines.
+
+---
+
+# v1.4.1-security — close the documents door (existing installs)
+
+Fresh installs get this automatically. If your brain was installed BEFORE
+v1.4.1, apply the portable patch to your running install. Gated, reversible,
+zero data impact (it changes code, not memories).
+
+## Step 1 — Pull v1.4.1 (or later)
+```bash
+cd ~/stanley-install && git fetch --tags && git checkout v1.4.1
+```
+
+## Step 2 — Apply the hardening to YOUR installed package
+```bash
+source <INSTALL_DIR>/memory-venv/bin/activate
+python update/tools/apply_security_hardening.py        # add --dry-run first to preview
+```
+Expect: `[SEC_DOCAUTH_V1] PATCHED documents.py` (+ middleware.py, app.py), each
+with a printed `.presec_<timestamp>` backup. Idempotent — safe to re-run.
+**Confirm back:** the three PATCHED lines and the backup filenames.
+
+## Step 3 — Tighten CORS in YOUR launcher (one line)
+In `<INSTALL_DIR>/memory-server.sh`, change:
+```
+export MCP_CORS_ORIGINS="...,*"      ->   export MCP_CORS_ORIGINS="https://claude.ai,https://*.claude.ai"
+```
+
+## Step 4 — Restart and self-verify
+```bash
+launchctl unload "$PLIST"; launchctl load "$PLIST"
+launchctl kickstart gui/$(id -u)/<YOUR_LABEL>; sleep 45
+KEY=$(cat <INSTALL_DIR>/memory-server-api-key.txt)
+# the door must be SHUT to no-key callers:
+curl -s -o /dev/null -w "no-key documents/upload -> %{http_code} (expect 401)\n" -X POST http://127.0.0.1:<PORT>/api/documents/upload
+curl -s -o /dev/null -w "keyed  documents/upload -> %{http_code} (expect 422)\n" -X POST http://127.0.0.1:<PORT>/api/documents/upload -H "X-API-Key: $KEY"
+curl -s -o /dev/null -w "openapi.json            -> %{http_code} (expect 404)\n" http://127.0.0.1:<PORT>/openapi.json
+```
+**Confirm back:** 401 / 422 / 404. If the no-key probe is anything but 401/403,
+STOP — the patch didn't take; restore the `.presec_*` backups and report.
+
+## Rollback
+Restore each `.presec_<timestamp>` backup over its file and restart. (Reopens the
+documents door — only if the patch misbehaves.)

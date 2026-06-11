@@ -120,3 +120,37 @@ list).
 **New gate:** `verify.py --expect-ingest-tag <tag>` — requires at least one
 active memory with that tag, all of them carrying the pipeline's
 `source_file:` facet.
+
+---
+
+## v1.4.1-security (June 2026) — close the documents door at the root, everywhere
+
+**What we found:** the document-ingestion routes (`/api/documents/*`) shipped in
+10.26.5 with **no application-layer key check** — every other route had one. On a
+key-gated install reachable on a public hostname, that meant an unauthenticated
+stranger could POST a document into the brain (a memory-poisoning vector) and read
+the upload history. Confirmed live on the founding instance; it was an installer
+gap, so every island inherited it.
+
+**The portable fix (`apply_security_hardening.py`, runs automatically on fresh
+installs):**
+1. **Documents-router auth (the important one).** A router-level dependency now
+   gates every `/api/documents/*` route behind the API key, exactly like
+   `/api/search` and the rest. No edge (WAF/Access) dependency — the app refuses
+   no-key requests itself, on every install. A valid key carries read+write+admin,
+   so nothing legitimate changes. Proven on a clean 10.26.5 install: no-key upload
+   `422 → 401`, keyed upload still works.
+2. **Header-only key on `/api/*`.** The `?api_key=` query parameter (key-in-URL =
+   key-in-logs) is no longer accepted on data routes. The claude.ai connector,
+   which legitimately uses `/mcp?api_key=`, is preserved — query-param auth still
+   works for `/mcp` only.
+3. **Public schema/docs off.** `/openapi.json`, `/api/docs`, `/api/redoc` no longer
+   hand the full route map + version to anyone mapping the surface.
+4. **CORS tightened** in the launcher template from `*` to the claude.ai origins.
+5. **Installer self-verifies.** A fresh install now probes its own documents
+   endpoint with no key and **refuses to report success while it is open** — so
+   "we forgot to lock the door" can never ship again.
+
+**For an install you already have:** the RUNBOOK's "Security hardening (existing
+install)" section applies the same patch to your running brain, gated and
+reversible (restore the printed `.presec_*` backups + restart).

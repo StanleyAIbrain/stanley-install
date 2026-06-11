@@ -15,6 +15,7 @@ validated end-to-end before release.
 | `tools/tag_propose.py` | **Cluster → propose** a facet map from the instance's own tags. Changes nothing. |
 | `tools/tag_apply.py` | Apply an **owner-approved** map. Append-only; asserts zero deletions; idempotent. |
 | `tools/apply_pieceC.py` | Idempotent code patcher for the date path + sets `HYBRID_DATE_ENABLED`. Refuses partial patches. |
+| `tools/apply_security_hardening.py` | Idempotent app-layer security patcher: documents-router auth (mandatory), header-only key on `/api/*`, public schema/docs off. Refuses partial on the mandatory fix. |
 | `tools/verify.py` | Post-update gates (zero deletions, tag hygiene, date path works, absent date fails open). |
 | `tools/rollback.sh` | `flag-off` (instant date-path disable) and `full` (DB+code+launch restore). |
 

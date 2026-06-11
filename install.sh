@@ -118,6 +118,16 @@ pip install --quiet -r "$SCRIPT_DIR/requirements.txt"
 MV="$(memory --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo '?')"
 c_grn "  ✓ mcp-memory-service $MV installed in $INSTALL_DIR/memory-venv"
 
+# ----------------------------------------------------------------------------
+step "3b. Apply security hardening (app-layer, portable — no edge dependency)"
+# FIX1 (mandatory): gate the documents router behind the API key like every other
+# route. FIX3: header-only key auth on /api/* (query-param kept for /mcp). FIX4:
+# disable the public OpenAPI schema/docs. Idempotent; the tool writes nothing and
+# exits non-zero if the mandatory anchor is missing (version drift) — we die then.
+python "$SCRIPT_DIR/update/tools/apply_security_hardening.py" \
+  || die "security hardening patch failed (FIX1 mandatory). Install aborted; nothing was launched."
+c_grn "  ✓ security hardening applied to the installed package"
+
 # ============================================================================
 step "4. Generate API key"
 API_KEY="$(openssl rand -hex 32)"
@@ -145,6 +155,17 @@ echo "  no-key /mcp → $NK (expect 401)   with-key /mcp → $WK (expect 200)"
 [ "$NK" = "401" ] || die "local no-key check expected 401, got $NK"
 [ "$WK" = "200" ] || die "local with-key check expected 200, got $WK"
 c_grn "  ✓ brain is key-gated locally"
+
+# FIX5 — self-verify the documents door is SHUT (the durable guarantee). A no-key
+# request must NOT reach the app: 401/403 = blocked. 2xx/422 = the request hit the
+# handler = the door is OPEN. The installer REFUSES to complete while it is open.
+DOC_NK="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 -X POST "http://127.0.0.1:$PORT/api/documents/upload")"
+DOC_WK="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 -X POST "http://127.0.0.1:$PORT/api/documents/upload" -H "X-API-Key: $API_KEY")"
+echo "  no-key /api/documents/upload → $DOC_NK (expect 401/403)   with-key → $DOC_WK (expect 422: auth ok, file missing)"
+case "$DOC_NK" in
+  401|403) c_grn "  ✓ documents endpoint is SHUT to unauthenticated callers" ;;
+  *) die "SECURITY: documents endpoint is OPEN (no-key POST returned $DOC_NK, expected 401/403). Hardening did not take — refusing to complete the install." ;;
+esac
 
 # ============================================================================
 if [ "$SANDBOX" = "1" ]; then
