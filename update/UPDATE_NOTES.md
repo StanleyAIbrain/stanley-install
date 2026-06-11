@@ -154,3 +154,18 @@ installs):**
 **For an install you already have:** the RUNBOOK's "Security hardening (existing
 install)" section applies the same patch to your running brain, gated and
 reversible (restore the printed `.presec_*` backups + restart).
+
+---
+
+## Known constraint — documents hardening + OAuth (logged June 2026)
+
+The v1.5.x documents-router hardening uses a router-level `require_read_access`
+dependency. Under **key-only auth** — the shipped default, where one API key
+carries `read write admin` — this is behaviorally identical to write-gating:
+no key → 401 on every documents route, valid key → full access. **If OAuth or
+scoped tokens are ever enabled, revisit this:** a read-scoped token could
+otherwise reach `upload`/`delete`. Before enabling OAuth, switch the mutating
+documents routes (`upload`, `batch-upload`, `remove`, `remove-by-tags`) to
+`require_write_access` while leaving the read routes on `require_read_access`.
+Shipped as **log-only** (no code change) because the current build is key-only;
+the router-level dependency keeps the patch a clean one-liner.

@@ -38,10 +38,14 @@ export MCP_API_KEY="$(cat {{INSTALL_DIR}}/memory-server-api-key.txt)"
 # search. Clustering/decay/health stay ON (proven metadata-only).
 # Revert lever: set MCP_CONSOLIDATION_ENABLED=false and restart the service.
 export MCP_CONSOLIDATION_ENABLED=true
-export MCP_ASSOCIATIONS_ENABLED=false
-export MCP_FORGETTING_ENABLED=false
-export MCP_COMPRESSION_ENABLED=false
+export MCP_ASSOCIATIONS_ENABLED=false     # load-bearing OFF — do not flip
+export MCP_FORGETTING_ENABLED=false       # load-bearing OFF — zero-deletion covenant
+export MCP_COMPRESSION_ENABLED=false      # load-bearing OFF — zero-deletion covenant
+export MCP_CLUSTERING_ENABLED=true        # explicit ON (additive only)
+export MCP_DECAY_ENABLED=true             # explicit ON (metadata-only scoring, deletes nothing)
 export MCP_CONSOLIDATION_ARCHIVE_PATH={{INSTALL_DIR}}/data/consolidation_archive
+# NOTE: the three *_ENABLED=false lines above are load-bearing. Any future edit to
+# this launcher must diff-preview to confirm all three survived.
 
 # Start the memory server (blocks; launchd KeepAlive restarts it)
 exec memory server --http 2>&1
