@@ -1,0 +1,23 @@
+# brain-liveness — external uptime alarm (TEMPLATE).
+# Deploy to YOUR OWN Cloudflare account. Edit CHECK_URL to your brain's PUBLIC
+# health URL. Set secrets (NOT in this file) before deploying:
+#   wrangler secret put TG_TOKEN      # your Telegram bot token
+#   wrangler secret put TG_CHAT       # your Telegram chat id
+# Then: wrangler deploy
+#
+# To smoke-test the alert path: temporarily point CHECK_URL at a 404 path and set
+# TEST_PREFIX = "🧪 TEST (ignore) — ", deploy, wait ~5 min for one alert, then revert.
+name = "brain-liveness"
+main = "src/index.js"
+compatibility_date = "2026-06-01"
+
+[triggers]
+crons = ["* * * * *"]
+
+[vars]
+CHECK_URL = "https://brain.YOUR-DOMAIN/api/health"   # <-- EDIT: your brain's public health URL
+BRAIN_NAME = "Brain"                                  # name used in the alert text
+# TEST_PREFIX = "🧪 TEST (ignore) — "                 # uncomment only while smoke-testing
+
+[observability]
+enabled = true
