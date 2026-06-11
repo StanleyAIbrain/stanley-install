@@ -166,3 +166,76 @@ STOP — the patch didn't take; restore the `.presec_*` backups and report.
 ## Rollback
 Restore each `.presec_<timestamp>` backup over its file and restart. (Reopens the
 documents door — only if the patch misbehaves.)
+
+---
+
+# Reliability / self-heal (v1.5.4) — keep the brain alive unattended
+
+launchd on some Macs is **degraded**: KeepAlive and `launchctl load` do not reliably
+respawn the memory server after a crash or a `launchctl unload`. Only `launchctl
+kickstart` brings it back. The reliability bundle (`update/reliability/`) closes that
+gap. All of it runs on YOUR machine and YOUR accounts.
+
+## Step 1 — Telegram creds file (chmod 600)
+```bash
+mkdir -p ~/.config/brain
+printf 'TELEGRAM_BOT_TOKEN=%s\nTELEGRAM_CHAT_ID=%s\n' '<your-bot-token>' '<your-chat-id>' > ~/.config/brain/telegram.env
+chmod 600 ~/.config/brain/telegram.env
+```
+**Confirm back:** `ls -l ~/.config/brain/telegram.env` shows `-rw-------`.
+
+## Step 2 — Install the scripts
+```bash
+mkdir -p ~/bin
+cp update/reliability/brain-watchdog.sh update/reliability/brain-restart.sh ~/bin/
+chmod +x ~/bin/brain-watchdog.sh ~/bin/brain-restart.sh
+# if your label/port differ from the stock defaults, edit the CONFIG block at the top of each.
+```
+
+## Step 3 — Watchdog cron (the run mechanism; cron, not launchd)
+```bash
+( crontab -l 2>/dev/null; echo '* * * * * /bin/bash $HOME/bin/brain-watchdog.sh' ) | crontab -
+crontab -l | grep brain-watchdog   # confirm the line is present
+```
+The watchdog is **silent** except on a real incident (one "down→back up" text, or one
+"restart FAILED — needs you"). No heartbeat/OK noise. State + a local tick log live in
+`/tmp/brain-watchdog/`.
+
+## Step 4 — Safe restart tool (use it for every stop/start)
+```bash
+~/bin/brain-restart.sh verify     # local (+ optional edge) health + row count, no changes
+~/bin/brain-restart.sh restart    # kickstart -k + verify-or-alert (never exits 0 without local 200)
+# DB maintenance pattern:  ~/bin/brain-restart.sh stop  ->  (offline work)  ->  ~/bin/brain-restart.sh start
+```
+**Never** use a bare `launchctl unload`/`load` for maintenance — `load` may not spawn.
+`brain-restart.sh start` is the only thing that verifies the brain actually came back.
+
+## Step 5 — (Optional, recommended) Off-box liveness Worker
+Deploy `update/reliability/liveness-worker/` to YOUR Cloudflare account:
+```bash
+cd update/reliability/liveness-worker
+# edit wrangler.toml: set CHECK_URL to YOUR public health URL
+wrangler secret put TG_TOKEN     # your Telegram bot token (entered as a secret, never typed in a command)
+wrangler secret put TG_CHAT      # your Telegram chat id
+wrangler deploy
+```
+It escalates ONLY if the brain is down ≥4 min and the watchdog hasn't recovered it
+(e.g. the machine is off). No "OK" noise.
+
+## Step 6 — Prove it heals (do this once)
+```bash
+~/bin/brain-restart.sh stop       # take it down on purpose
+# hands off — within ~2 min the watchdog should kickstart it and you get ONE text.
+~/bin/brain-restart.sh verify     # confirm local=200 again
+```
+You should get **exactly one** text. A stream of messages = misconfig; stop and check
+the CONFIG blocks. If it doesn't recover in ~4 min, run `~/bin/brain-restart.sh start`
+by hand.
+
+## launchd-degraded note (why cron, why kickstart)
+- Kill-tested: KeepAlive did **not** respawn (0/2); `launchctl kickstart` did (5/5).
+- `launchctl load`/`bootstrap` alone defer the spawn ("pended speculative/inefficient").
+- Therefore: cron is the run mechanism (ticks independent of launchd), kickstart is the
+  spawn, and every stop is treated as "down until kickstart + verified 200."
+- Reboot-retest is optional defense-in-depth: after a reboot, confirm the brain comes
+  back (cron + watchdog will kickstart it within a minute even if launchd doesn't).
