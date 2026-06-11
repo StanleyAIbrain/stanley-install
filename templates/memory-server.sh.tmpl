@@ -21,7 +21,11 @@ export MCP_MEMORY_SQLITE_PATH={{INSTALL_DIR}}/data/sqlite_vec.db
 export MCP_MEMORY_BACKUPS_PATH={{INSTALL_DIR}}/data/backups
 
 # --- Auth: API key ONLY (no anonymous, no OAuth — OAuth has a no-refresh bug) ---
-export MCP_CORS_ORIGINS="https://claude.ai,https://*.claude.ai,*"
+# CORS restricted to the claude.ai connector origins (no '*' wildcard). The MCP
+# connector calls /mcp?api_key= directly (not a browser CORS fetch), so it is
+# unaffected; this only stops arbitrary websites from reading API responses in a
+# victim's browser. With no '*', the server also enables allow-credentials correctly.
+export MCP_CORS_ORIGINS="https://claude.ai,https://*.claude.ai"
 export MCP_OAUTH_ENABLED=false
 export MCP_ALLOW_ANONYMOUS_ACCESS=false
 export MCP_API_KEY="$(cat {{INSTALL_DIR}}/memory-server-api-key.txt)"
