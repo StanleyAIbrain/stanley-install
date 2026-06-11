@@ -29,6 +29,8 @@ NAME="${WD_NAME:-Brain}"                                                        
 CREDS="${WD_CREDS:-$HOME/.config/brain/telegram.env}"
 SDIR="${WD_STATE_DIR:-/tmp/brain-watchdog}"
 FAILWIN="${WD_FAILWIN:-180}"   # seconds after a kick before declaring FIX-FAILED (model load ~33s)
+PORT="${WD_PORT:-8765}"                          # local port the brain binds (orphan reaping)
+PROCSIG="${WD_PROCSIG:-memory server --http}"    # process signature an orphan must match to be reaped
 # =======================================================================================
 
 REKICK=180                      # silent re-kick interval while still down
@@ -68,7 +70,31 @@ cooldown_ok() {
     [ $(( NOW - LAST )) -ge "$COOLDOWN" ]
 }
 
+# v1.5.5 orphan hardening: an UNTRACKED process holding the port makes every
+# kickstart bind-fail -> eternal FIX-FAILED. Before kicking, reap any listener on
+# $PORT that launchd does not track AND whose command matches $PROCSIG. A
+# signature-mismatched port-holder is logged as a WARNING and never killed.
+reap_orphans() {
+    local TRACKED LISTENERS P CMD
+    TRACKED=$(/bin/launchctl list 2>/dev/null | awk -v l="$LABEL" '$3==l{print $1}')
+    LISTENERS=$(lsof -t -iTCP:"$PORT" -sTCP:LISTEN 2>/dev/null)
+    [ -n "$LISTENERS" ] || return 0
+    for P in $LISTENERS; do
+        [ -n "$TRACKED" ] && [ "$P" = "$TRACKED" ] && continue
+        CMD=$(ps -o command= -p "$P" 2>/dev/null)
+        if echo "$CMD" | grep -qF "$PROCSIG"; then
+            log "REAPING untracked orphan pid=$P on port $PORT: $CMD"
+            kill "$P" 2>/dev/null
+            sleep 2
+            kill -0 "$P" 2>/dev/null && { kill -9 "$P" 2>/dev/null; log "orphan pid=$P needed SIGKILL"; }
+        else
+            log "WARNING: port $PORT held by NON-MATCHING pid=$P ($CMD) — not killing"
+        fi
+    done
+}
+
 kick() {
+    reap_orphans
     if ! /bin/launchctl kickstart -k "${DOMAIN}/${LABEL}" >> "$TICK" 2>&1; then
         log "kickstart failed — bootstrap fallback"
         /bin/launchctl bootstrap "$DOMAIN" "$PLIST" >> "$TICK" 2>&1
