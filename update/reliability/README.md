@@ -5,7 +5,7 @@ anyone else's system.
 
 | Piece | What it does | Where it runs |
 |---|---|---|
-| `brain-watchdog.sh` | Every minute, checks the local health URL. If down, `launchctl kickstart`s the service and texts you **once** ("was down at HH:MM, restarted, back up"). Silent otherwise. | your crontab |
+| `brain-watchdog.sh` | Every minute, checks the local health URL. If down: reaps any untracked orphan holding the port (v1.5.5, signature-guarded), `launchctl kickstart`s the service, and texts you **once** ("was down at HH:MM, restarted, back up"). Silent otherwise. | your crontab |
 | `brain-restart.sh` | The one safe way to stop/start/restart. `start`/`restart` never exit 0 without a verified local 200; failure alerts you. | by hand |
 | `liveness-worker/` | A Cloudflare Worker TEMPLATE you deploy to **your** account, pointed at **your** public health URL, with **your** Telegram secrets. Escalates only if the brain is down ≥4 min and the watchdog hasn't recovered it (e.g. the machine is off). | your Cloudflare |
 
@@ -13,7 +13,10 @@ anyone else's system.
 On some Macs launchd is degraded: KeepAlive / `launchctl load` do **not** reliably
 respawn the service after a crash or a `launchctl unload`. Only `launchctl kickstart`
 brings it back. Cron ticks independently of launchd, so the watchdog (cron + kickstart)
-is the dependable recovery path. The Worker is off-box defense-in-depth for the case
+is the dependable recovery path. v1.5.5 also covers the stuck-orphan case: an
+untracked process holding the brain's port would make every kickstart bind-fail, so
+the watchdog reaps it first (only if it matches the process signature — a mismatched
+port-holder is warned about, never killed). The Worker is off-box defense-in-depth for the case
 where the whole machine is down.
 
 ## Setup (summary — see RUNBOOK-v1.4.md "Reliability / self-heal" for the gated steps)

@@ -169,7 +169,11 @@ documents door — only if the patch misbehaves.)
 
 ---
 
-# Reliability / self-heal (v1.5.4) — keep the brain alive unattended
+# Reliability / self-heal (v1.5.5) — keep the brain alive unattended
+
+> **Install this from v1.5.5 or later, NOT v1.5.4.** v1.5.4's watchdog had a gap:
+> it could not recover when an UNTRACKED orphan process held the brain's port
+> (kickstart's fresh instance bind-fails forever). v1.5.5 reaps such orphans first.
 
 launchd on some Macs is **degraded**: KeepAlive and `launchctl load` do not reliably
 respawn the memory server after a crash or a `launchctl unload`. Only `launchctl
@@ -200,6 +204,12 @@ crontab -l | grep brain-watchdog   # confirm the line is present
 The watchdog is **silent** except on a real incident (one "down→back up" text, or one
 "restart FAILED — needs you"). No heartbeat/OK noise. State + a local tick log live in
 `/tmp/brain-watchdog/`.
+
+**Orphan reaping (v1.5.5):** before every kickstart the watchdog kills any process
+LISTENING on the brain's port that launchd does NOT track AND whose command matches
+the `PROCSIG` signature (default `memory server --http`). A port-holder that does not
+match the signature is logged as a WARNING and never killed — the watchdog will not
+kill the wrong thing. Override port/signature via `WD_PORT` / `WD_PROCSIG`.
 
 ## Step 4 — Safe restart tool (use it for every stop/start)
 ```bash
