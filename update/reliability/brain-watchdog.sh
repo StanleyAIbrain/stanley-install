@@ -49,6 +49,14 @@ NOW=$(date +%s)
 STAMP=$(date '+%F %T')
 DOMAIN="gui/$(id -u)"
 
+# Chained tunnel check (v1.5.6): the tunnel auto-fixer runs off this same cron
+# line — one scheduler entry drives both watchdogs. Separate script, separate
+# state dir, silent, never recursive. Disabled until the operator sets
+# TW_EDGE_URL in its CONFIG block. Skipped in sandbox/test runs (WD_STATE_DIR set).
+if [ -z "${WD_STATE_DIR:-}" ] && [ -x "$HOME/bin/brain-tunnel-watchdog.sh" ]; then
+    /bin/bash "$HOME/bin/brain-tunnel-watchdog.sh" || true
+fi
+
 log() { echo "$STAMP $1" >> "$TICK"; }
 
 tg() {
@@ -100,8 +108,20 @@ kick() {
         /bin/launchctl bootstrap "$DOMAIN" "$PLIST" >> "$TICK" 2>&1
         /bin/launchctl kickstart "${DOMAIN}/${LABEL}" >> "$TICK" 2>&1
     fi
-    echo "$NOW" > "$F_KICKED"
-    log "KICKSTARTED ${LABEL}"
+    # KICK-VERIFY: on some Macs launchd ACKs while the spawn silently PENDS
+    # ("pended nondemand spawn"). Trust only a real PID. Verified spawn ->
+    # F_KICKED set (re-kick timer arms). Pended -> no F_KICKED, so the next
+    # tick retries immediately against the now-loaded job.
+    sleep 3
+    local SPAWNED
+    SPAWNED=$(/bin/launchctl list 2>/dev/null | awk -v l="$LABEL" '$3==l && $1 != "-" {print $1}')
+    if [ -n "$SPAWNED" ]; then
+        echo "$NOW" > "$F_KICKED"
+        log "KICKSTARTED ${LABEL} pid=$SPAWNED"
+        return 0
+    fi
+    log "spawn PENDED (no pid) — retrying next tick"
+    return 1
 }
 
 CODE=$(curl -sS -m 5 -o /dev/null -w "%{http_code}" "$HEALTH" 2>/dev/null)
@@ -109,8 +129,10 @@ log "tick health=$CODE"
 
 if [ "$CODE" = "200" ]; then
     rm -f "$F_FAILS"
-    if [ -f "$F_KICKED" ]; then
-        DS=$(cat "$F_DOWNSINCE" 2>/dev/null || cat "$F_KICKED")
+    if [ -f "$F_DOWNSINCE" ]; then
+        # incident closes: DOWN→FIXED (keyed on incident start, so it fires even
+        # if every kick pended and the service came back on a retry/self-heal)
+        DS=$(cat "$F_DOWNSINCE" 2>/dev/null || echo "$NOW")
         SINCE=$(date -r "$DS" '+%H:%M' 2>/dev/null || echo "?")
         if cooldown_ok || [ -f "$F_FAILEDSENT" ]; then
             tg "${NAME} was down at ${SINCE}, restarted, back up."
@@ -123,24 +145,32 @@ if [ "$CODE" = "200" ]; then
 fi
 
 # ---- failure path ----
-if [ -f "$F_KICKED" ]; then
-    KICKED=$(cat "$F_KICKED")
-    if [ $(( NOW - KICKED )) -ge "$FAILWIN" ]; then
-        if [ ! -f "$F_FAILEDSENT" ]; then
-            if cooldown_ok; then tg "${NAME} down, restart FAILED — needs you."
-            else log "FIX-FAILED (message suppressed by cooldown)"; fi
-            echo "$NOW" > "$F_FAILEDSENT"
-        fi
-        [ $(( NOW - KICKED )) -ge "$REKICK" ] && kick
-    fi
-    exit 0
-fi
-
 FAILS=$(( $(cat "$F_FAILS" 2>/dev/null || echo 0) + 1 ))
 echo "$FAILS" > "$F_FAILS"
-if [ "$FAILS" -ge 2 ]; then
+if [ "$FAILS" -lt 2 ] && [ ! -f "$F_DOWNSINCE" ]; then
+    exit 0   # not an incident yet
+fi
+
+# incident open (or opening now) — anchor is F_DOWNSINCE, not the kick
+if [ ! -f "$F_DOWNSINCE" ]; then
     date -v -1M +%s > "$F_DOWNSINCE" 2>/dev/null || echo "$NOW" > "$F_DOWNSINCE"
-    rm -f "$F_FAILS"
-    kick   # SILENT — the message comes on the outcome (FIXED or FIX-FAILED)
+fi
+DS=$(cat "$F_DOWNSINCE")
+
+# FIX-FAILED keyed on incident start — fires even if every kick attempt pended
+if [ $(( NOW - DS )) -ge "$FAILWIN" ] && [ ! -f "$F_FAILEDSENT" ]; then
+    if cooldown_ok; then tg "${NAME} down, restart FAILED — needs you."
+    else log "FIX-FAILED (message suppressed by cooldown)"; fi
+    echo "$NOW" > "$F_FAILEDSENT"
+fi
+
+# kick policy: never-verified -> retry every tick; verified -> re-kick every REKICK
+if [ ! -f "$F_KICKED" ]; then
+    kick || true   # SILENT — the message comes on the outcome (FIXED or FIX-FAILED)
+else
+    KICKED=$(cat "$F_KICKED")
+    if [ $(( NOW - KICKED )) -ge "$REKICK" ]; then
+        kick || true
+    fi
 fi
 exit 0
