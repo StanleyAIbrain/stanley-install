@@ -169,11 +169,12 @@ documents door — only if the patch misbehaves.)
 
 ---
 
-# Reliability / self-heal (v1.5.6) — keep the brain alive unattended
+# Reliability / self-heal (v1.5.7) — keep the brain alive unattended
 
-> **Install this from v1.5.6 or later — it is the complete reliability release.**
-> (v1.5.4 had the orphan gap; v1.5.5 fixed it; v1.5.6 adds tunnel hardening: the
-> public side can be dark while the brain is healthy locally — now self-healing too.)
+> **Install this from v1.5.7 or later — it is the complete reliability release.**
+> (v1.5.4 orphan gap → v1.5.5 fixed; v1.5.6 added tunnel hardening; v1.5.7 adds
+> access-log API-key redaction — the HTTP access log no longer writes keys in
+> plaintext. All carry forward.)
 
 launchd on some Macs is **degraded**: KeepAlive and `launchctl load` do not reliably
 respawn the memory server after a crash or a `launchctl unload`. Only `launchctl
@@ -256,6 +257,47 @@ protocol: http2
 then restart the tunnel (`launchctl kickstart -k gui/$(id -u)/<your-cloudflared-label>`)
 and confirm the log registers connections with `protocol=http2`. If your QUIC is
 stable, skip this — you still get the auto-fixer.
+
+## Step 5c — Access-log key redaction (v1.5.7)
+
+The HTTP access log records request URLs, and connector requests carry the API
+key as `?api_key=...` — so the key lands in the log in plaintext. v1.5.7 masks
+it at the logging layer, **before it is written**, with zero change to how
+requests are authenticated (a valid key still authenticates; an invalid key
+still 401s — the log just stops showing the value).
+
+Wire the redaction shim onto your server's Python path (engine source untouched):
+```bash
+mkdir -p ~/bin/log-redact
+cp update/reliability/log-redact/sitecustomize.py ~/bin/log-redact/
+```
+Then add ONE line to your `<INSTALL_DIR>/memory-server.sh`, right after the
+`source .../activate` line (Python auto-imports `sitecustomize` from PYTHONPATH
+at interpreter start, installing a logging filter that redacts
+`api_key`/`token`/`secret`/`password` values):
+```bash
+export PYTHONPATH="$HOME/bin/log-redact${PYTHONPATH:+:$PYTHONPATH}"
+```
+Restart with the safe tool and confirm:
+```bash
+~/bin/brain-restart.sh restart
+# fire one authed request, then check the log shows api_key=REDACTED, not the key:
+grep -c 'api_key=REDACTED' <your access log>     # > 0
+```
+**Scrub the history + tighten perms** (the existing log already holds past keys):
+```bash
+python3 - "$HOME/path/to/your/access.log" <<'PY'
+import re,sys
+pat=re.compile(r'((?:api_key|apikey|api-key|access_token|token|secret|password)=)([^&\s"\'\\]+)',re.I)
+p=sys.argv[1]; d=open(p,errors='replace').read()
+with open(p,'r+') as f:          # inode-preserving so the live server keeps appending
+    f.seek(0); f.write(pat.sub(r'\1REDACTED',d)); f.truncate()
+PY
+chmod 600 <your access log>
+```
+> Safety: this only changes what is written to the log. It never touches request
+> handling. If the shim ever fails to import, the server still starts and still
+> authenticates — you just lose redaction (caught by the grep check above).
 
 ## Step 6 — Prove it heals (do this once)
 ```bash
