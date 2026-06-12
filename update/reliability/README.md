@@ -7,6 +7,7 @@ anyone else's system.
 |---|---|---|
 | `brain-watchdog.sh` | Every minute, checks the local health URL. If down: reaps any untracked orphan holding the port (v1.5.5, signature-guarded), `launchctl kickstart`s the service, and texts you **once** ("was down at HH:MM, restarted, back up"). Silent otherwise. | your crontab |
 | `brain-restart.sh` | The one safe way to stop/start/restart. `start`/`restart` never exit 0 without a verified local 200; failure alerts you. | by hand |
+| `brain-tunnel-watchdog.sh` (v1.5.6) | Silent tunnel auto-fixer: edge down 2 checks while local is 200 → restarts the cloudflared tunnel (10-min cooldown). Never texts. Disabled until you set `TW_EDGE_URL`. Chained off the same cron line as the watchdog. | chained from brain-watchdog |
 | `liveness-worker/` | A Cloudflare Worker TEMPLATE you deploy to **your** account, pointed at **your** public health URL, with **your** Telegram secrets. Escalates only if the brain is down ≥4 min and the watchdog hasn't recovered it (e.g. the machine is off). | your Cloudflare |
 
 ## Why this exists

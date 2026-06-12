@@ -169,11 +169,11 @@ documents door — only if the patch misbehaves.)
 
 ---
 
-# Reliability / self-heal (v1.5.5) — keep the brain alive unattended
+# Reliability / self-heal (v1.5.6) — keep the brain alive unattended
 
-> **Install this from v1.5.5 or later, NOT v1.5.4.** v1.5.4's watchdog had a gap:
-> it could not recover when an UNTRACKED orphan process held the brain's port
-> (kickstart's fresh instance bind-fails forever). v1.5.5 reaps such orphans first.
+> **Install this from v1.5.6 or later — it is the complete reliability release.**
+> (v1.5.4 had the orphan gap; v1.5.5 fixed it; v1.5.6 adds tunnel hardening: the
+> public side can be dark while the brain is healthy locally — now self-healing too.)
 
 launchd on some Macs is **degraded**: KeepAlive and `launchctl load` do not reliably
 respawn the memory server after a crash or a `launchctl unload`. Only `launchctl
@@ -191,8 +191,8 @@ chmod 600 ~/.config/brain/telegram.env
 ## Step 2 — Install the scripts
 ```bash
 mkdir -p ~/bin
-cp update/reliability/brain-watchdog.sh update/reliability/brain-restart.sh ~/bin/
-chmod +x ~/bin/brain-watchdog.sh ~/bin/brain-restart.sh
+cp update/reliability/brain-watchdog.sh update/reliability/brain-restart.sh update/reliability/brain-tunnel-watchdog.sh ~/bin/
+chmod +x ~/bin/brain-watchdog.sh ~/bin/brain-restart.sh ~/bin/brain-tunnel-watchdog.sh
 # if your label/port differ from the stock defaults, edit the CONFIG block at the top of each.
 ```
 
@@ -231,6 +231,31 @@ wrangler deploy
 ```
 It escalates ONLY if the brain is down ≥4 min and the watchdog hasn't recovered it
 (e.g. the machine is off). No "OK" noise.
+
+## Step 5b — Tunnel auto-fixer + http2 (v1.5.6)
+
+Your brain can be healthy locally while the PUBLIC side is dark — the cloudflared
+tunnel's connections can wedge. Two-part fix:
+
+**(a) Enable the tunnel auto-fixer** (already copied to `~/bin` in Step 2; it runs
+chained off the SAME crontab line as the brain watchdog — no new cron entry):
+edit the CONFIG block at the top of `~/bin/brain-tunnel-watchdog.sh` and set
+`TW_EDGE_URL` to your public health URL (e.g. `https://brain.YOUR-DOMAIN/api/health`)
+and `TW_LABEL` to your cloudflared launchd label (`launchctl list | grep -i cloudflared`).
+Until `TW_EDGE_URL` is set the fixer is disabled and fully silent — safe default.
+Behavior: edge down 2 checks in a row while local is 200 → restart the tunnel,
+10-min cooldown. It NEVER texts (the off-box Worker stays the only loud voice).
+
+**(b) If (and only if) your tunnel log shows repeated QUIC timeouts** — lines like
+`failed to accept QUIC stream: timeout: no recent network activity` — switch the
+tunnel to TCP transport. In YOUR tunnel config file (commonly `~/.cloudflared/config.yml`,
+or wherever your install keeps it) add:
+```yaml
+protocol: http2
+```
+then restart the tunnel (`launchctl kickstart -k gui/$(id -u)/<your-cloudflared-label>`)
+and confirm the log registers connections with `protocol=http2`. If your QUIC is
+stable, skip this — you still get the auto-fixer.
 
 ## Step 6 — Prove it heals (do this once)
 ```bash

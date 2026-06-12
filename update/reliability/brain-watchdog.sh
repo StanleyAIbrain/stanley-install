@@ -49,6 +49,14 @@ NOW=$(date +%s)
 STAMP=$(date '+%F %T')
 DOMAIN="gui/$(id -u)"
 
+# Chained tunnel check (v1.5.6): the tunnel auto-fixer runs off this same cron
+# line — one scheduler entry drives both watchdogs. Separate script, separate
+# state dir, silent, never recursive. Disabled until the operator sets
+# TW_EDGE_URL in its CONFIG block. Skipped in sandbox/test runs (WD_STATE_DIR set).
+if [ -z "${WD_STATE_DIR:-}" ] && [ -x "$HOME/bin/brain-tunnel-watchdog.sh" ]; then
+    /bin/bash "$HOME/bin/brain-tunnel-watchdog.sh" || true
+fi
+
 log() { echo "$STAMP $1" >> "$TICK"; }
 
 tg() {
