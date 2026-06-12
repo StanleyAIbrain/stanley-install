@@ -72,13 +72,23 @@ log "tick local=200 edge=$EDGE_CODE consecutive=$FAILS"
 LASTKICK=$(cat "$F_LASTKICK" 2>/dev/null || echo 0)
 [ $(( NOW - LASTKICK )) -lt "$COOLDOWN" ] && exit 0
 
-echo "$NOW" > "$F_LASTKICK"
-rm -f "$F_FAILS"
 UID_N=$(id -u)
 if ! /bin/launchctl kickstart -k "gui/${UID_N}/${LABEL}" >> "$TICK" 2>&1; then
     log "kickstart failed — bootstrap fallback"
     /bin/launchctl bootstrap "gui/${UID_N}" "$PLIST" >> "$TICK" 2>&1
     /bin/launchctl kickstart "gui/${UID_N}/${LABEL}" >> "$TICK" 2>&1
 fi
-log "TUNNEL KICKSTARTED ${LABEL} (edge was $EDGE_CODE while local 200)"
+# KICK-VERIFY: on some Macs launchd ACKs bootstrap/kickstart while the spawn is
+# silently PENDED ("pended nondemand spawn"). Trust only a real PID. Verified
+# spawn -> cooldown set + fails cleared. Pended -> NO cooldown, fails kept, so
+# the very next tick retries kickstart -k against the now-loaded job.
+sleep 3
+SPAWNED=$(/bin/launchctl list 2>/dev/null | awk -v l="$LABEL" '$3==l && $1 != "-" {print $1}')
+if [ -n "$SPAWNED" ]; then
+    echo "$NOW" > "$F_LASTKICK"
+    rm -f "$F_FAILS"
+    log "TUNNEL KICKSTARTED ${LABEL} pid=$SPAWNED (edge was $EDGE_CODE while local 200)"
+else
+    log "spawn PENDED (no pid) — no cooldown, retrying next tick"
+fi
 exit 0
